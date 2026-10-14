@@ -64,3 +64,5 @@ logs*/data/guba_data.csv
 backend/data/
 # 旧 Studio Registry 是本地数据；迁移时可通过 TWINMARKET_REGISTRY_PATH 继续使用。
 studio/backend/data/
+
+runs

@@ -1,6 +1,6 @@
-# TwinMarket Studio（已冻结）
+# TwinMarket Studio
 
-> 此目录仅作为迁移参考保留。产品 Web 与 Electron renderer 统一使用仓库顶层 `frontend/`；不再在这里新增功能或修复与新前端重复的界面。
+> Studio 是当前持续开发的研究工作台前端。P0 聚焦真实本地仿真的最小闭环：配置模拟 → 启动 Run → 观察 Runtime → 查看真实结果。
 
 四个主路由：`/studio/Experiment`、`/studio/Agent`、`/studio/Market`、`/studio/Setting`。
 
@@ -8,7 +8,7 @@
 
 ## 前后端边界
 
-- `frontend/`：新建实例、LiveSimulationView 与结果表 UI；`src/` 保留 Studio 壳层和只读资源页面。
+- `src/`：Studio 四空间壳层与只读资源页面；`frontend/LiveSimulationView.jsx`：真实 Run 配置、控制、Runtime Observatory、实时安全日志和结果表。
 - `../backend/`：独立 FastAPI 控制/查询面、SQLite Run Registry、Process Manager 与 Worker。
 - `../../runtime/`：与 FastAPI/React 解耦的 RuntimeEvent、EventStore、Observer 和 Snapshot Reducer。
 - `../../runs/<run_id>/`：每个运行独占的配置快照、`events.jsonl`、`state.json`、数据库、日志和结果产物。
@@ -33,7 +33,7 @@ Python 3.10+，Node 18+；浏览器自动化测试使用本机已安装的 Googl
 ## 可验证体验
 
 - Experiment：创建草稿、校验参数、启动/停止/续跑、独立运行目录与配置快照。
-- Runtime Observatory：Run/Day/Agent 三个尺度、固定 Day Cycle、六阶段 Agent Pipeline、Worker Lanes、SSE 断线补发、诊断抽屉和完成后的真实结果表。
+- Runtime Observatory：Run/Day/Agent 三个尺度、固定 Day Cycle、六阶段 Agent Pipeline、Worker Lanes、SSE 断线补发、实时脱敏终端日志、诊断抽屉和完成后的真实结果表。
 - Agent：1,000 人基础模板、类型分布、搜索与分页、成员详情；行为金融测试仅预留流程入口。
 - Market：环境预览、现有撮合机制、行业指数包、本地行情/新闻/索引库存。
 - Setting：模型名称与配置文件存在性、数据源接入规划、浏览器本地密度偏好；不自动测试模型或外部连接。

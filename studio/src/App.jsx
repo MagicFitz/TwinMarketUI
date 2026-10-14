@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Button,
-  Icon,
   Tag,
   Tooltip,
   Card,
@@ -11,27 +10,43 @@ import {
   Drawer,
   CodeBlock,
 } from "animal-island-ui";
+import {
+  ArchiveIcon,
+  ChatBubbleIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  CubeIcon,
+  FileTextIcon,
+  GearIcon,
+  GlobeIcon,
+  MagnifyingGlassIcon,
+  PersonIcon,
+  QuestionMarkCircledIcon,
+  ReloadIcon,
+  RocketIcon,
+  Share1Icon,
+  SpeakerLoudIcon,
+} from "@radix-ui/react-icons";
 import { Documentation } from "./Documentation.jsx";
 import {
   LiveSimulationView,
   RunComposer,
 } from "../frontend/LiveSimulationView.jsx";
 
-// animal-island-ui 使用字符串形式的图标名称；集中声明可避免在 JSX 中散落魔法字符串。
-const FlaskConical = "Compass";
-const Users = "User";
-const ChartNoAxesCombined = "Globe";
-const Settings2 = "Settings";
-const ArrowUpRight = "Share";
-const RefreshCw = "Refresh";
-const Leaf = "Leaf";
-const Search = "Search";
-const ChevronRight = "Play";
-const X = "Close";
-const Database = "Folder";
-const Radio = "Wifi";
-const Layers = "Chat";
-const CircleHelp = "Bulb";
+// Radix 图标集中声明，业务语义与图标库实现分离。
+const FlaskConical = RocketIcon;
+const Users = PersonIcon;
+const ChartNoAxesCombined = GlobeIcon;
+const Settings2 = GearIcon;
+const ArrowUpRight = Share1Icon;
+const RefreshCw = ReloadIcon;
+const Leaf = CubeIcon;
+const Search = MagnifyingGlassIcon;
+const ChevronRight = ChevronRightIcon;
+const Database = ArchiveIcon;
+const Radio = SpeakerLoudIcon;
+const Layers = ChatBubbleIcon;
+const CircleHelp = QuestionMarkCircledIcon;
 import * as echarts from "echarts/core";
 import { LineChart } from "echarts/charts";
 import { GridComponent, TooltipComponent } from "echarts/components";
@@ -42,11 +57,11 @@ echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
 // 左侧导航的路由段、显示名称和图标。
 const spaces = [
-  { id: "Experiment", name: "实验空间", icon: FlaskConical },
-  { id: "Agent", name: "智能体群体", icon: Users },
-  { id: "Market", name: "市场环境", icon: ChartNoAxesCombined },
-  { id: "Setting", name: "全局设置", icon: Settings2 },
-  { id: "Documentation", name: "文档", icon: "Book" },
+  { id: "Experiment", name: "实验", hint: "创建、运行与观察", icon: FlaskConical },
+  { id: "Agent", name: "智能体", hint: "投资者群体", icon: Users },
+  { id: "Market", name: "市场", hint: "环境与资产", icon: ChartNoAxesCombined },
+  { id: "Setting", name: "设置", hint: "模型与偏好", icon: Settings2 },
+  { id: "Documentation", name: "文档", hint: "项目说明", icon: FileTextIcon },
 ];
 // 统一处理空值与中文数字格式，保证表格、指标和提示中的展示口径一致。
 const n = (value) =>
@@ -55,7 +70,7 @@ const n = (value) =>
     : Number(value).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
 const time = (value) =>
   value ? new Date(value).toLocaleTimeString("zh-CN", { hour12: false }) : "—";
-const glyph = (icon, size = 18) => <Icon name={icon} size={size} />;
+const glyph = (IconComponent, size = 18) => <IconComponent width={size} height={size} aria-hidden="true" />;
 
 // 后端运行状态到界面文案的映射。
 const statusNames = {
@@ -802,7 +817,7 @@ function Experiment({
                           >
                             <span>{d.cal_date.slice(5)}</span>
                             {d.snapshotted ? (
-                              glyph("Check", 13)
+                              glyph(CheckIcon, 13)
                             ) : (
                               <span className="day-mark">
                                 {d.is_open === "open" ? "·" : "–"}
@@ -1234,8 +1249,8 @@ export function App() {
             >
               {glyph(s.icon, 23)}
               <span>
-                {s.id}
-                <small>{s.name}</small>
+                {s.name}
+                <small>{s.hint}</small>
               </span>
             </a>
           ))}
@@ -1262,7 +1277,7 @@ export function App() {
                   aria-pressed={live}
                   onClick={() => setLive((v) => !v)}
                 >
-                  {glyph("Wifi", 16)}
+                  {glyph(Radio, 16)}
                   {live ? "每 5 秒读取" : "已暂停"}
                 </Button>
                 <span className="update-time">

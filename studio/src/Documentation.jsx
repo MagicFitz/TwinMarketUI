@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Card, Input, Icon, Tag, CodeBlock } from 'animal-island-ui';
+import { Button, Card, Input, Tag, CodeBlock } from 'animal-island-ui';
+import { MagnifyingGlassIcon, ReloadIcon } from '@radix-ui/react-icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -55,10 +56,10 @@ export function Documentation({refresh}) {
   }
   const matches=items.filter(item=>`${item.title} ${item.category}`.toLowerCase().includes(query.toLowerCase()));
   return <>
-    <div className="page-heading"><h1>文档</h1><Button type="primary" onClick={()=>setManual(n=>n+1)} icon={<Icon name="Refresh" size={18}/>}>刷新文档</Button></div>
+    <div className="page-heading"><h1>文档</h1><Button type="primary" onClick={()=>setManual(n=>n+1)} icon={<ReloadIcon width={18} height={18} aria-hidden="true" />}>刷新文档</Button></div>
     <div className="docs-layout">
       <Card className="docs-index">
-        <Input size="small" aria-label="搜索文档" placeholder="搜索文档" value={query} onChange={e=>setQuery(e.target.value)} prefix={<Icon name="Search" size={16}/>}/>
+        <Input size="small" aria-label="搜索文档" placeholder="搜索文档" value={query} onChange={e=>setQuery(e.target.value)} prefix={<MagnifyingGlassIcon width={16} height={16} aria-hidden="true" />}/>
         <nav aria-label="文档列表">{matches.map(item=><a key={item.path} href={`/studio/Documentation?doc=${encodeURIComponent(item.path)}`} aria-current={item.path===selected?'page':undefined} onClick={e=>{if(e.metaKey||e.ctrlKey)return;e.preventDefault();select(item.path);}}><span>{item.title}</span><small>{item.category}</small></a>)}</nav>
         {!matches.length&&<p className="empty">{catalog.loading?'读取中…':catalog.error || (query?'无匹配文档':'暂无已发布文档')}</p>}
       </Card>

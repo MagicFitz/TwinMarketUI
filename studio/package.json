@@ -10,6 +10,7 @@
     "test:sites": "node --test tests/sites-worker.test.mjs"
   },
   "dependencies": {
+    "@radix-ui/react-icons": "^1.3.2",
     "@vitejs/plugin-react": "5.0.4",
     "animal-island-ui": "1.11.0",
     "classnames": "2.5.1",

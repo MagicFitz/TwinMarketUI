@@ -8,9 +8,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+# 定义RUNS的状态
 
 STATUSES = frozenset(("draft", "queued", "running", "stopping", "completed", "failed", "cancelled"))
+
 HEALTH = frozenset(("healthy", "degraded", "stale", "unavailable"))
+
 TRANSITIONS = {
     "draft": {"queued", "cancelled"},
     "queued": {"running", "failed", "cancelled"},

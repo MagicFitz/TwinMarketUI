@@ -1,8 +1,10 @@
-# Prototype Instructions
+# Studio Development Instructions
 
-Confirmed product architecture (2026-09-12): the four primary spaces are Experiment, Agent, Market, Setting. Experiment owns experiment composition, runs, monitoring and analysis. Agent owns reusable Agent Groups and reserves behavioral-finance tests. Market owns mechanisms, asset packs, data synchronization and environment snapshots. Setting owns model/data-source credentials and extensible global defaults. This prototype is strictly read-only: write workflows are labeled planned and never execute changes. Preserve existing simulations and the research landing page.
+Confirmed product architecture (2026-09-12): the four primary spaces are Experiment, Agent, Market, Setting. Experiment owns experiment composition, runs, monitoring and analysis. Agent owns reusable Agent Groups and reserves behavioral-finance tests. Market owns mechanisms, asset packs, data synchronization and environment snapshots. Setting owns model/data-source credentials and extensible global defaults. Studio is an active frontend. Its current P0 is the real local simulation loop: configure a Run, start it, observe persisted RuntimeEvent progress, and inspect real results. The Run path may call the existing backend create/start/stop/resume APIs; all other resource-management workflows remain planned and must not mutate existing simulations or the research landing page.
 
 Run the local server yourself and open the preview in the browser available to this environment. Do not give the user server-start instructions when you can run it.
+
+Responsive preference: in portrait/mobile layouts, the primary space switcher is a fixed bottom navigation bar. Do not place the space-switching controls above the workspace content.
 
 Before making substantial visual changes, use the Product Design plugin's `get-context` skill when the visual source is unclear or no longer matches the current goal. When the user gives durable prototype-specific design feedback, preferences, or decisions, record them in `AGENTS.md`.
 
