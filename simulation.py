@@ -15,11 +15,12 @@ import os
 import random
 import sqlite3
 import threading
+import traceback
 from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Literal, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 # 第三方库导入
 import pandas as pd
@@ -28,6 +29,7 @@ from openai import OpenAI
 from tqdm import tqdm
 
 from runtime import EventStore, RuntimeObserver
+from runtime.agent_run import AgentRun
 from runtime.schemas import Scope
 
 # 本地模块导入
@@ -59,7 +61,7 @@ from util.ForumDB import (
 # 代理激活概率（默认全部激活）
 ACTIVATE_AGENT_PROB = 1
 
-# 超时阈值（秒）- 5分钟
+# 单个 Agent 单次尝试的处理时限（秒）- 5分钟
 TIMEOUT_THRESHOLD = 5 * 60
 
 # 配置日志输出格式
@@ -84,7 +86,14 @@ def write_checkpoint(state_path: str | None, completed_date: pd.Timestamp) -> No
     atomic_json_write(path, state)
 
 
-def process_user_input(
+def process_user_input(*args, run: AgentRun):
+    """在工作线程中运行单个 Agent：记录实际开始时间并把 run 绑定到线程，供 LLM 重试上报。"""
+    run.begin()
+    with run.bound():
+        return _process_user_input(*args, run)
+
+
+def _process_user_input(
     user_id,
     user_db,
     forum_db,
@@ -103,7 +112,7 @@ def process_user_input(
     activate_maapping,
     belief_args,
     config_path,
-    observer: RuntimeObserver | None = None,
+    run: AgentRun,
 ):
     """
     处理单个用户的交易输入和决策过程
@@ -132,10 +141,8 @@ def process_user_input(
         tuple: (user_id, forum_args, decision_result, post_response_args)
     """
     try:
-        worker_id = f"thread-{threading.get_ident()}"
-        if observer:
-            observer.started(Scope.AGENT, "state", simulation_date=current_date.strftime("%Y-%m-%d"), agent_id=str(user_id), worker_id=worker_id,
-                             input_summary={"activation": bool(activate_maapping.get(user_id, False))}, message="正在读取 Agent 状态")
+        if run:
+            run.start("state", input_summary={"activation": bool(activate_maapping.get(user_id, False))}, message="正在读取 Agent 状态")
         # 获取用户交易策略
         user_strategy = df_strategy[df_strategy["user_id"] == user_id].iloc[0][
             "strategy"
@@ -165,11 +172,9 @@ def process_user_input(
         is_top_user = user_id in top_user
         is_activate_user = activate_maapping[user_id]
 
-        if observer:
-            observer.completed(Scope.AGENT, "state", simulation_date=current_date.strftime("%Y-%m-%d"), agent_id=str(user_id), worker_id=worker_id,
-                               output_summary={"strategy": user_strategy, "active": is_activate_user, "cash": user_profile.get("current_cash"), "positions": len(stock_ids)}, message="Agent 状态已就绪")
-            observer.started(Scope.AGENT, "perception", simulation_date=current_date.strftime("%Y-%m-%d"), agent_id=str(user_id), worker_id=worker_id,
-                             input_summary={"trading_day": is_trading_day}, message="正在收集市场与社交信息")
+        if run:
+            run.complete("state", output_summary={"strategy": user_strategy, "active": is_activate_user, "cash": user_profile.get("current_cash"), "positions": len(stock_ids)}, message="Agent 状态已就绪")
+            run.start("perception", input_summary={"trading_day": is_trading_day}, message="正在收集市场与社交信息")
 
         # 获取用户信念值（从不同数据源根据日期获取）
         try:
@@ -223,11 +228,9 @@ def process_user_input(
             belief=belief,  # 用户信念值
         )
 
-        if observer:
-            observer.completed(Scope.AGENT, "perception", simulation_date=current_date.strftime("%Y-%m-%d"), agent_id=str(user_id), worker_id=worker_id,
-                               output_summary={"news_available": bool(import_news), "candidate_assets": len(stock_ids)}, message="感知信息已准备")
-            observer.started(Scope.AGENT, "interpretation", simulation_date=current_date.strftime("%Y-%m-%d"), agent_id=str(user_id), worker_id=worker_id,
-                             input_summary={"belief": belief}, message="正在形成市场判断")
+        if run:
+            run.complete("perception", output_summary={"news_available": bool(import_news), "candidate_assets": len(stock_ids)}, message="感知信息已准备")
+            run.start("interpretation", input_summary={"belief": belief}, message="正在形成市场判断")
 
         # 调用交易代理的主要处理逻辑，获取交易决策和论坛互动结果
         (
@@ -243,7 +246,7 @@ def process_user_input(
             day_1st=day_1st,  # 是否为第一天
         )
 
-        if observer:
+        if run:
             decisions = decision_result.get("stock_decisions", {}) if isinstance(decision_result, dict) else {}
             action_counts = {"buy": 0, "sell": 0, "hold": 0, "orders": 0}
             for item in decisions.values():
@@ -253,14 +256,15 @@ def process_user_input(
                 if action in action_counts:
                     action_counts[action] += 1
                 action_counts["orders"] += len(item.get("sub_orders") or [])
-            observer.completed(Scope.AGENT, "interpretation", simulation_date=current_date.strftime("%Y-%m-%d"), agent_id=str(user_id), worker_id=worker_id,
-                               output_summary={"belief": belief, "llm_called": bool(is_activate_user)}, message="市场判断已完成")
-            observer.started(Scope.AGENT, "decision", simulation_date=current_date.strftime("%Y-%m-%d"), agent_id=str(user_id), worker_id=worker_id, message="正在生成交易意图")
-            observer.completed(Scope.AGENT, "decision", simulation_date=current_date.strftime("%Y-%m-%d"), agent_id=str(user_id), worker_id=worker_id,
-                               output_summary={"has_decision": decision_result is not None, **action_counts}, message="交易意图已生成")
-            observer.started(Scope.AGENT, "action", simulation_date=current_date.strftime("%Y-%m-%d"), agent_id=str(user_id), worker_id=worker_id, message="正在生成可执行动作")
-            observer.completed(Scope.AGENT, "action", simulation_date=current_date.strftime("%Y-%m-%d"), agent_id=str(user_id), worker_id=worker_id,
-                               output_summary={**action_counts, "post_intent": int(post_response_args is not None), "interaction_intent": int(forum_args is not None)}, message="可执行动作已生成")
+            run.complete("interpretation", output_summary={"belief": belief, "llm_called": bool(is_activate_user)}, message="市场判断已完成")
+            run.start("decision", message="正在生成交易意图")
+            run.complete("decision", output_summary={"has_decision": decision_result is not None, **action_counts}, message="交易意图已生成")
+            run.start("action", message="正在生成可执行动作")
+            run.complete("action", output_summary={**action_counts, "post_intent": int(post_response_args is not None), "interaction_intent": int(forum_args is not None)}, message="可执行动作已生成")
+
+        # 超时被放弃的 Agent 不再写入任何产物，主循环已记录其失败。
+        if run.abandoned:
+            return user_id, {"error": "abandoned after timeout"}, None, None
 
         # 保存用户与AI的对话记录（线程安全）
         if conversation_history:
@@ -276,10 +280,9 @@ def process_user_input(
                 with open(conversation_file, "w", encoding="utf-8") as f:
                     json.dump(conversation_history, f, indent=4, ensure_ascii=False)
 
-        if observer:
-            observer.started(Scope.AGENT, "commit", simulation_date=current_date.strftime("%Y-%m-%d"), agent_id=str(user_id), worker_id=worker_id, message="正在提交 Agent 产物")
-            observer.completed(Scope.AGENT, "commit", simulation_date=current_date.strftime("%Y-%m-%d"), agent_id=str(user_id), worker_id=worker_id,
-                               output_summary={"conversation_saved": bool(conversation_history)}, message="Agent 产物已提交")
+        if run:
+            run.start("commit", message="正在提交 Agent 产物")
+            run.complete("commit", output_summary={"conversation_saved": bool(conversation_history)}, message="Agent 产物已提交")
 
         # 返回处理结果：用户ID、论坛互动参数、交易决策结果、帖子回复参数
         return user_id, forum_args, decision_result, post_response_args
@@ -287,10 +290,58 @@ def process_user_input(
     except Exception as e:
         # 异常处理：打印错误信息并返回错误状态
         print(f"处理用户 {user_id} 时出错: {e}")
-        if observer:
-            observer.failed(Scope.AGENT, "commit", simulation_date=current_date.strftime("%Y-%m-%d"), agent_id=str(user_id), worker_id=f"thread-{threading.get_ident()}",
-                            message="Agent 处理失败，运行将继续", error_code=type(e).__name__, error_summary=str(e))
+        traceback.print_exc()  # 完整调用栈只写入 simulation.log，界面显示错误摘要
+        # 失败记录在 Agent 当时所处的阶段，而不是一律记为 commit。
+        run.fail(e)
         return user_id, {"error": str(e)}, None, None
+
+
+def run_agents_for_day(all_user, task, observer, date_string, max_workers, agent_timeout, context_dir=None):
+    """并发运行当日所有 Agent，返回每个 Agent 的 (user_id, forum_args, decision_result, post_response_args)。
+
+    线程无法被强制终止：超时的 Agent 会被放弃（记录失败、屏蔽其后续写入），并以相同配置
+    重试一次。as_completed 只交出已完成的任务，无法发现卡住的任务，所以这里用 wait()
+    轮询并按每个 Agent 的实际开始时间判断超时。
+    """
+    outcomes = []
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    pending = {}
+
+    def submit(user_id, run):
+        pending[executor.submit(task, user_id, run)] = (user_id, run)
+
+    for user_id in all_user:
+        submit(user_id, AgentRun(observer, user_id, date_string, context_dir=context_dir))
+    progress = tqdm(total=len(all_user), desc=f"处理输入 {date_string}", unit="用户")
+    try:
+        while pending:
+            done, _ = wait(pending, timeout=min(1.0, agent_timeout / 4), return_when=FIRST_COMPLETED)
+            for future in done:
+                user_id, run = pending.pop(future)
+                try:
+                    outcomes.append(future.result())
+                except Exception as e:  # process_user_input 自身已捕获业务异常
+                    run.fail(e)
+                    outcomes.append((user_id, {"error": str(e)}, None, None))
+                progress.update(1)
+            for future, (user_id, run) in list(pending.items()):
+                elapsed = run.elapsed()
+                if elapsed is None or elapsed <= agent_timeout:
+                    continue
+                del pending[future]
+                summary = f"在 {run.stage or 'state'} 阶段超过 {agent_timeout} 秒未完成（第 {run.attempt} 次尝试）"
+                print(f"[输入处理] 用户 {user_id} 超时：{summary}")
+                run.abandon("AgentTimeout", summary)
+                if run.attempt < 2:
+                    submit(user_id, run.next_attempt())
+                else:
+                    outcomes.append((user_id, {"error": summary}, None, None))
+                    progress.update(1)
+    finally:
+        progress.close()
+        # 不等待被放弃的线程；它们受 LLM 请求超时约束，会自行结束。
+        executor.shutdown(wait=False, cancel_futures=True)
+    return outcomes
 
 
 def init_simulation(
@@ -300,6 +351,7 @@ def init_simulation(
     user_db: str = "data/sys_100.db",
     debug: bool = True,
     max_workers: int = 1,
+    agent_timeout: float = TIMEOUT_THRESHOLD,
     user_graph_save_name: str = "user_graph",
     checkpoint: bool = True,
     similarity_threshold: float = 0.1,
@@ -327,6 +379,7 @@ def init_simulation(
         user_db: 用户数据库文件路径
         debug: 是否开启调试模式
         max_workers: 最大并发线程数
+        agent_timeout: 单个 Agent 单次尝试的处理时限（秒），超时后放弃并重试一次
         user_graph_save_name: 用户关系图保存名称
         checkpoint: 是否从检查点开始
         similarity_threshold: 用户相似度阈值
@@ -553,94 +606,21 @@ def init_simulation(
         forum_args_list = []  # 论坛互动参数
         post_args_list = []  # 帖子发布参数
 
-        # 使用线程池并发处理所有用户
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # 为每个用户创建并发任务
-            futures = [
-                executor.submit(
-                    process_user_input,
-                    user_id,
-                    user_db,
-                    forum_db,
-                    df_stock,
-                    current_date,
-                    debug,
-                    day_1st,
-                    current_user_graph,
-                    import_news,
-                    df_strategy,
-                    is_trading_day,
-                    top_user,
-                    log_dir,
-                    prob_of_technical,
-                    user_config_mapping,
-                    activate_maapping,
-                    belief_args,
-                    user_config_mapping[user_id],  # 传入用户对应的配置
-                    observer,
-                )
-                for user_id in all_user
-            ]
+        user_args = (
+            user_db, forum_db, df_stock, current_date, debug, day_1st, current_user_graph,
+            import_news, df_strategy, is_trading_day, top_user, log_dir, prob_of_technical,
+            user_config_mapping, activate_maapping, belief_args,
+        )
 
-            # 使用tqdm显示处理进度
-            for future in tqdm(
-                as_completed(futures),
-                total=len(all_user),
-                desc=f"处理输入 {current_date.strftime('%Y-%m-%d')}",
-                unit="用户",
-            ):
-                try:
-                    # 等待任务完成，设置超时限制
-                    user_id, forum_args, decision_result, post_response_args = (
-                        future.result(timeout=TIMEOUT_THRESHOLD)
-                    )
-                    # 收集各类处理结果
-                    forum_args_list.append((user_id, forum_args))
-                    results.append((user_id, decision_result))
-                    post_args_list.append((user_id, post_response_args))
-
-                except TimeoutError:
-                    # 超时处理：使用备用配置重试
-                    print(
-                        f"[输入处理] 用户 {user_id} 超时: 处理超过 {TIMEOUT_THRESHOLD//60} 分钟。使用备用配置重试..."
-                    )
-                    fallback_config_path = "./config/api.yaml"
-                    retry_future = executor.submit(
-                        process_user_input,
-                        user_id,
-                        user_db,
-                        forum_db,
-                        df_stock,
-                        current_date,
-                        debug,
-                        day_1st,
-                        current_user_graph,
-                        import_news,
-                        df_strategy,
-                        is_trading_day,
-                        top_user,
-                        log_dir,
-                        prob_of_technical,
-                        user_config_mapping,
-                        activate_maapping,
-                        belief_args,
-                        fallback_config_path,
-                        observer,
-                    )
-                    try:
-                        # 重试任务的结果处理
-                        user_id, forum_args, decision_result, post_response_args = (
-                            retry_future.result(timeout=TIMEOUT_THRESHOLD)
-                        )
-                        forum_args_list.append((user_id, forum_args))
-                        results.append((user_id, decision_result))
-                        post_args_list.append((user_id, post_response_args))
-                    except Exception as e:
-                        print(f"[输入处理] 重试后仍失败，用户 {user_id}: {e}")
-
-                except Exception as e:
-                    # 其他异常处理
-                    print(f"[输入处理] 处理用户 {user_id} 时出错: {e}")
+        for outcome_user, forum_args, decision_result, post_response_args in run_agents_for_day(
+            all_user,
+            lambda uid, run: process_user_input(uid, *user_args, user_config_mapping[uid], run=run),
+            observer, date_string, max_workers, agent_timeout,
+            context_dir=Path(log_dir) / "llm_context" / date_string,
+        ):
+            forum_args_list.append((outcome_user, forum_args))
+            results.append((outcome_user, decision_result))
+            post_args_list.append((outcome_user, post_response_args))
 
         observer.completed(Scope.DAY, "agents", simulation_date=date_string,
                            output_summary={"processed": len(results), "failed": sum(result is None for _, result in results)}, message="Agent 处理阶段完成")
@@ -846,6 +826,9 @@ def parse_args():
         "--max_workers", type=int, default=50, help="并发处理的最大线程数"
     )
     parser.add_argument(
+        "--agent_timeout", type=float, default=TIMEOUT_THRESHOLD, help="单个 Agent 单次尝试的处理时限（秒）"
+    )
+    parser.add_argument(
         "--log_dir", type=str, default="logs_100_0128_claude", help="日志文件保存目录"
     )
 
@@ -945,6 +928,7 @@ if __name__ == "__main__":
         user_db=args.user_db,
         debug=args.debug,
         max_workers=args.max_workers,
+        agent_timeout=args.agent_timeout,
         user_graph_save_name=args.user_graph_save_name,
         checkpoint=checkpoint,
         similarity_threshold=args.similarity_threshold,

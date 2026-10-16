@@ -144,7 +144,6 @@ class ModelSettingsService:
                 continue
             if not isinstance(config[name], int | float) or isinstance(config[name], bool) or config[name] < 0:
                 raise ValueError(f"{name} 必须是非负数字")
-        if kind == "language" and str(config.get("api_type") or "openai") not in {
-            "openai", "openrouter", "vllm", "ollama", "local",
-        }:
-            raise ValueError("不支持的语言模型 API 类型")
+        # Agent.py 只支持 OpenAI 兼容接口。
+        if kind == "language" and str(config.get("api_type") or "openai") not in {"openai", "openrouter", "vllm"}:
+            raise ValueError("不支持的语言模型 API 类型（仅支持 OpenAI 兼容接口）")

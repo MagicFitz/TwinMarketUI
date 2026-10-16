@@ -21,6 +21,7 @@ DEFAULTS = {
     "start_date": "2023-06-15",
     "end_date": "2023-06-16",
     "max_workers": 1,
+    "agent_timeout": 300,
     "activate_prob": 0.2,
     "prob_of_technical": 0.3,
     "random_seed": 20260916,
@@ -77,16 +78,18 @@ def normalize_config(value: dict[str, Any], settings: Settings | None = None) ->
         config["template_db"] = str(settings.data_path("sys_1000.db"))
     config["user_count"] = int(config["user_count"])
     config["max_workers"] = int(config["max_workers"])
+    config["agent_timeout"] = int(config["agent_timeout"])
     config["random_seed"] = int(config["random_seed"])
     config["activate_prob"] = float(config["activate_prob"])
     config["prob_of_technical"] = float(config["prob_of_technical"])
     if (
         not 1 <= config["user_count"] <= 1000
         or config["max_workers"] < 1
+        or not 30 <= config["agent_timeout"] <= 3600
         or not 0 <= config["activate_prob"] <= 1
         or not 0 <= config["prob_of_technical"] <= 1
     ):
-        raise ValueError("用户数、并发数或概率超出允许范围")
+        raise ValueError("用户数、并发数、Agent 超时（30–3600 秒）或概率超出允许范围")
     if config["start_date"] > config["end_date"]:
         raise ValueError("开始日期不能晚于结束日期")
     for key in ("template_db", "belief_source", "config_path"):

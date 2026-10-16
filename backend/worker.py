@@ -89,6 +89,8 @@ def run_worker(run_id: str, *, resume: bool = False, settings: Settings | None =
             config["end_date"],
             "--max_workers",
             str(config["max_workers"]),
+            "--agent_timeout",
+            str(config.get("agent_timeout", 300)),  # 早期 Run 的配置中没有该字段
             "--node",
             str(config["user_count"]),
             "--config_path",

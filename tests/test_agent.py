@@ -1,28 +1,33 @@
-"""Unit tests for the provider-aware LLM request boundary."""
+"""Unit tests for the OpenAI-compatible LLM request boundary.
+
+These use a fake client: the "[API错误] ..." lines printed while they run are
+the simulated failures being exercised, not real network calls.
+"""
 
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
-import requests
+import httpx2
+import openai
 
 from Agent import BaseAgent
+
+REQUEST = httpx2.Request("POST", "http://llm.test/v1/chat/completions")
+
+
+def status_error(cls, status, message):
+    return cls(message, response=httpx2.Response(status, request=REQUEST), body=None)
 
 
 def make_agent(**attributes):
     agent = BaseAgent.__new__(BaseAgent)
-    agent.provider = "openai"
-    agent.api_type = "openai"
     agent.model_name = "test-model"
+    agent.default_system_prompt = "system"
     agent.max_retries = 3
     agent.retry_delay = 0
-    agent.model_capabilities = {
-        "context_window": 100,
-        "max_output_tokens": 40,
-        "supports": {"temperature": False, "top_p": False,
-                     "frequency_penalty": False, "presence_penalty": False,
-                     "max_tokens": True, "max_completion_tokens": False},
-    }
+    agent.context_window = 100
+    agent.max_output_tokens = 40
     agent._log_api_event = Mock()
     agent.client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace()))
     for name, value in attributes.items():
@@ -30,7 +35,11 @@ def make_agent(**attributes):
     return agent
 
 
-class ProviderAwareRequestTests(unittest.TestCase):
+def completion(text="ok"):
+    return SimpleNamespace(usage=None, choices=[SimpleNamespace(message=SimpleNamespace(content=text))])
+
+
+class RequestBoundaryTests(unittest.TestCase):
     def test_max_tokens_is_limited_by_context_and_model_output(self):
         agent = make_agent()
         effective, input_tokens = agent._effective_max_tokens(
@@ -45,49 +54,61 @@ class ProviderAwareRequestTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "上下文窗口"):
             agent._effective_max_tokens([{"role": "user", "content": "x" * 1000}], 1)
 
-    def test_unsupported_sampling_parameters_are_not_sent(self):
+    def test_request_carries_clamped_max_tokens(self):
         agent = make_agent()
-        response = SimpleNamespace(usage=None, _request_id="provider-request")
-        create = Mock(return_value=response)
+        create = Mock(return_value=completion())
         agent.client.chat.completions.create = create
 
-        result = agent._BaseAgent__call_api([{"role": "user", "content": "hi"}], max_tokens=9)
+        agent._BaseAgent__call_api([{"role": "user", "content": "hi"}], max_tokens=9)
 
-        self.assertIs(result, response)
-        request = create.call_args.kwargs
-        self.assertEqual(request["max_tokens"], 9)
-        for parameter in ("temperature", "top_p", "frequency_penalty", "presence_penalty"):
-            self.assertNotIn(parameter, request)
+        self.assertEqual(create.call_args.kwargs["max_tokens"], 9)
+        self.assertEqual(create.call_args.kwargs["model"], "test-model")
 
-    def test_deterministic_400_is_not_retried(self):
-        agent = make_agent()
-        response = SimpleNamespace(status_code=400, headers={})
-        failure = requests.HTTPError("invalid parameter", response=response)
-        create = Mock(side_effect=failure)
-        agent.client.chat.completions.create = create
+    def test_deterministic_400_and_auth_errors_are_not_retried(self):
+        for error in (status_error(openai.BadRequestError, 400, "invalid parameter"),
+                      status_error(openai.AuthenticationError, 401, "invalid api key")):
+            agent = make_agent()
+            create = Mock(side_effect=error)
+            agent.client.chat.completions.create = create
+            with self.assertRaises(type(error)):
+                agent._BaseAgent__call_api([{"role": "user", "content": "hi"}])
+            self.assertEqual(create.call_count, 1)
 
-        with self.assertRaises(requests.HTTPError):
+    def test_rate_limit_and_server_errors_are_retried(self):
+        for error in (status_error(openai.RateLimitError, 429, "rate limited"),
+                      status_error(openai.InternalServerError, 502, "bad gateway")):
+            agent = make_agent(max_retries=2)
+            create = Mock(side_effect=[error, completion()])
+            agent.client.chat.completions.create = create
             agent._BaseAgent__call_api([{"role": "user", "content": "hi"}])
+            self.assertEqual(create.call_count, 2)
 
-        self.assertEqual(create.call_count, 1)
-        self.assertFalse(agent._log_api_event.call_args.kwargs["retryable"])
+    def test_timeout_and_connection_errors_are_retried(self):
+        for error in (openai.APITimeoutError(request=REQUEST), openai.APIConnectionError(request=REQUEST)):
+            agent = make_agent(max_retries=2)
+            create = Mock(side_effect=[error, completion()])
+            agent.client.chat.completions.create = create
+            agent._BaseAgent__call_api([{"role": "user", "content": "hi"}])
+            self.assertEqual(create.call_count, 2)
 
-    def test_rate_limit_is_retried(self):
-        agent = make_agent(max_retries=2)
-        response = SimpleNamespace(status_code=429, headers={})
-        failure = requests.HTTPError("rate limited", response=response)
-        success = SimpleNamespace(usage=None, _request_id="done")
-        create = Mock(side_effect=[failure, success])
+    def test_get_response_adds_system_prompt_without_mutating_history(self):
+        agent = make_agent()
+        create = Mock(return_value=completion("你好"))
         agent.client.chat.completions.create = create
+        history = [{"role": "user", "content": "hi"}]
 
-        self.assertIs(agent._BaseAgent__call_api([{"role": "user", "content": "hi"}]), success)
-        self.assertEqual(create.call_count, 2)
+        result = agent.get_response(messages=history)
 
-    def test_timeout_is_retried(self):
-        agent = make_agent(max_retries=2)
-        success = SimpleNamespace(usage=None, _request_id="done")
-        create = Mock(side_effect=[requests.Timeout("timeout"), success])
-        agent.client.chat.completions.create = create
+        self.assertEqual(result["response"], "你好")
+        self.assertEqual(create.call_args.kwargs["messages"][0], {"role": "system", "content": "system"})
+        self.assertEqual(history, [{"role": "user", "content": "hi"}])
 
-        self.assertIs(agent._BaseAgent__call_api([{"role": "user", "content": "hi"}]), success)
-        self.assertEqual(create.call_count, 2)
+    def test_get_response_returns_error_dict_after_final_failure(self):
+        agent = make_agent(max_retries=1)
+        agent.client.chat.completions.create = Mock(side_effect=status_error(openai.AuthenticationError, 401, "invalid api key"))
+
+        self.assertIn("invalid api key", agent.get_response(user_input="hi")["error"])
+
+
+if __name__ == "__main__":
+    unittest.main()

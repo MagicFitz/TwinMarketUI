@@ -99,7 +99,7 @@ def clear_date_scoped_artifacts(run_dir: Path, resume_date: str) -> None:
     """Remove date-scoped outputs at/after resume_date, preserving prior days."""
     date_pattern = re.compile(r"\d{4}-\d{2}-\d{2}")
     for parent_name in ("conversation_records", "trading_records", "reaction_records",
-                        "post_records", "simulation_results", "graphs"):
+                        "post_records", "simulation_results", "graphs", "llm_context"):
         parent = run_dir / parent_name
         if not parent.is_dir():
             continue

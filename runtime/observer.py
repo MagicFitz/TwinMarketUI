@@ -32,6 +32,18 @@ class RuntimeObserver:
     def completed(self, scope: Scope, stage: str, **fields):
         started_at, started_clock = self._started.pop(self._key(scope, stage, fields), (None, None))
         return self.emit(EventType.COMPLETED, scope, stage, started_at=started_at, ended_at=datetime.now(timezone.utc).isoformat(), duration_ms=(round((perf_counter() - started_clock) * 1000) if started_clock is not None else None), **fields)
-    def skipped(self, scope: Scope, stage: str, **fields): return self.emit(EventType.SKIPPED, scope, stage, **fields)
-    def failed(self, scope: Scope, stage: str, **fields): return self.emit(EventType.FAILED, scope, stage, **fields)
-    def retrying(self, scope: Scope, stage: str, **fields): return self.emit(EventType.RETRYING, scope, stage, **fields)
+    # 失败/重试/跳过是瞬时事件：记录发生时间，并结束对应阶段的计时。
+    def _instant(self, event: EventType, scope: Scope, stage: str, fields: dict):
+        key = self._key(scope, stage, fields)
+        if event == EventType.RETRYING:  # 重试不结束阶段：阶段仍在进行
+            started_at, started_clock = self._started.get(key, (None, None))
+        else:
+            started_at, started_clock = self._started.pop(key, (None, None))
+            if started_clock is not None:
+                fields.setdefault("duration_ms", round((perf_counter() - started_clock) * 1000))
+        fields.setdefault("started_at", started_at)
+        fields.setdefault("ended_at", datetime.now(timezone.utc).isoformat())
+        return self.emit(event, scope, stage, **fields)
+    def skipped(self, scope: Scope, stage: str, **fields): return self._instant(EventType.SKIPPED, scope, stage, fields)
+    def failed(self, scope: Scope, stage: str, **fields): return self._instant(EventType.FAILED, scope, stage, fields)
+    def retrying(self, scope: Scope, stage: str, **fields): return self._instant(EventType.RETRYING, scope, stage, fields)

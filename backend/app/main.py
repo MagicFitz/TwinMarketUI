@@ -31,6 +31,7 @@ from backend.services.agents import AgentService
 from backend.services.catalog import CatalogService
 from backend.services.documentation import DocumentationService
 from backend.services.logs import LogService
+from backend.services.llm_context import agent_llm_context
 from backend.services.market import MarketService
 from backend.services.model_settings import ModelSettingsService
 from backend.settings import Settings, get_settings
@@ -284,6 +285,16 @@ def create_app(
             if agent["agent_id"] == agent_id:
                 return agent
         raise HTTPException(404, "当前事件中没有此 Agent")
+
+    @app.get("/api/runs/{run_id}/agents/{agent_id}/llm-context")
+    def agent_llm_context_view(run_id: str, agent_id: str, date: str | None = None):
+        output_dir = registered_output_dir(run_id)
+        if output_dir is None:
+            raise HTTPException(404, "运行不存在")
+        try:
+            return agent_llm_context(output_dir, agent_id, date)
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
 
     @app.get("/api/runs/{run_id}/diagnostics")
     def diagnostics(run_id: str):
