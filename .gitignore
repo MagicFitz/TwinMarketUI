@@ -65,7 +65,8 @@ backend/data/
 # 旧 Studio Registry 是本地数据；迁移时可通过 TWINMARKET_REGISTRY_PATH 继续使用。
 studio/backend/data/
 
-runs
+# 模拟运行产物（日志、数据库），每次运行都会生成，不进仓库。
+runs/
 # Local financial-data credentials and licensed data; never publish these inputs.
 config/data_sources.yaml
 data/market_staging/
