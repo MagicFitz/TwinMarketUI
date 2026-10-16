@@ -3,6 +3,7 @@ import { Button, Card, Drawer, Tag } from 'animal-island-ui';
 import { MagnifyingGlassIcon } from '@radix-ui/react-icons';
 import './runtime.css';
 import { LLMContextButton } from './LLMContextInspector.jsx';
+import { RunMarketSnapshot } from '../src/MarketData.jsx';
 
 const DAY = [['prepare','Environment'], ['agents','Agent Processing'], ['market','Market'], ['social','Social'], ['commit','Commit']];
 const PIPELINE = [['state','State'], ['perception','Perception'], ['interpretation','Interpretation'], ['decision','Decision'], ['action','Action'], ['commit','Commit']];
@@ -47,19 +48,21 @@ function RuntimeLog({runId, status}) {
 
 export function RunComposer({onCreated}) {
   const [form, setForm] = useState({name:'10 Agent 观察运行', user_count:10, start_date:'2023-06-15', end_date:'2023-06-16', max_workers:1, agent_timeout:300, activate_prob:0.2, prob_of_technical:0.3, random_seed:20260916});
+  const [marketValid, setMarketValid] = useState(false);
   const [advanced,setAdvanced] = useState(false), [error,setError] = useState(''), [saving,setSaving] = useState(false);
   const change = (key, value) => setForm(previous => ({...previous,[key]:value}));
   async function submit(event) {
     event.preventDefault(); setSaving(true); setError('');
-    try { const run = await fetchJson('/api/runs', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:form.name, config:form})}); onCreated(run.run_id); }
+    try { const run = await fetchJson('/api/runs', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:form.name, config:{...form, market_data_mode:form.market_snapshot_id ? 'snapshot' : 'legacy', market_snapshot_id:form.market_snapshot_id || null}})}); onCreated(run.run_id); }
     catch (reason) { setError(reason.message); } finally { setSaving(false); }
   }
   return <form className="run-composer" onSubmit={submit}><p>创建后会冻结非敏感参数与输入文件指纹；创建成功将直接进入运行台，再由你明确点击“运行模拟”。</p>
     <label>实例名称<input required value={form.name} onChange={e=>change('name',e.target.value)}/></label>
     <div className="form-grid"><label>用户数量<input required type="number" min="1" max="1000" value={form.user_count} onChange={e=>change('user_count',Number(e.target.value))}/></label><label>并发 Worker<input required type="number" min="1" value={form.max_workers} onChange={e=>change('max_workers',Number(e.target.value))}/></label><label>起始日期<input required type="date" value={form.start_date} onChange={e=>change('start_date',e.target.value)}/></label><label>结束日期<input required min={form.start_date} type="date" value={form.end_date} onChange={e=>change('end_date',e.target.value)}/></label></div>
+    <RunMarketSnapshot value={form.market_snapshot_id} onChange={value=>change('market_snapshot_id',value)} startDate={form.start_date} endDate={form.end_date} allowMissingNews={!!form.allow_missing_news} onAllowMissingNews={value=>change('allow_missing_news',value)} onValidity={setMarketValid}/>
     <Button type="text" onClick={()=>setAdvanced(v=>!v)} aria-expanded={advanced}>高级参数 {advanced?'收起':'展开'}</Button>
     {advanced && <div className="form-grid"><label>激活概率<input type="number" min="0" max="1" step="0.05" value={form.activate_prob} onChange={e=>change('activate_prob',Number(e.target.value))}/></label><label>技术面概率<input type="number" min="0" max="1" step="0.05" value={form.prob_of_technical} onChange={e=>change('prob_of_technical',Number(e.target.value))}/></label><label>Agent 超时（秒）<input type="number" min="30" max="3600" value={form.agent_timeout} onChange={e=>change('agent_timeout',Number(e.target.value))}/></label><label>随机种子<input type="number" value={form.random_seed} onChange={e=>change('random_seed',Number(e.target.value))}/></label></div>}
-    {error && <p className="runtime-error" role="alert">{error}</p>}<Button htmlType="submit" type="primary" loading={saving}>创建实例</Button>
+    {error && <p className="runtime-error" role="alert">{error}</p>}<Button htmlType="submit" type="primary" loading={saving} disabled={saving || !marketValid || form.start_date > form.end_date}>创建实例</Button>
   </form>;
 }
 
@@ -160,6 +163,7 @@ export function LiveSimulationView({runId, onBack}) {
   async function action(name) { try {await fetchJson(`/api/runs/${runId}/${name}`,{method:'POST'}); const changed=await fetchJson(`/api/runs/${runId}`);setRun(changed);}catch(e){setError(e.message);} }
   if (!run || !snapshot) return <div className="runtime-loading">正在连接 Runtime Observatory…</div>;
   return <section className="runtime-view"><div className="runtime-header"><div><Button type="text" onClick={onBack}>返回实验</Button><h1>{run.name}</h1><p>Run ID: {runId} · 模拟日期：{snapshot.day.date || '—'}</p></div><div className="runtime-actions"><StateTag value={run.status}/><StateTag value={run.health}/>{run.status==='draft'&&<Button type="primary" onClick={()=>action('start')}>运行模拟</Button>}{['failed','cancelled'].includes(run.status)&&<Button type="primary" onClick={()=>action('resume')}>续跑</Button>}{activeRun(run.status)&&<Button onClick={()=>action('stop')}>停止</Button>}<Button onClick={()=>setDrawer(true)} icon={<MagnifyingGlassIcon width={17} height={17} aria-hidden="true" />}>检查</Button></div></div>
+    <Card className="runtime-panel"><h2>本次市场环境</h2><p>{run.config.market_snapshot_id || '内置历史文件 · 旧版模式'}</p>{run.config.allow_missing_news && <p>此实验明确允许无新闻模式；新闻缺失的研究限制已记录在清单。</p>}</Card>
     {error&&<p className="runtime-error" role="alert">{error}</p>}<div className="runtime-progress"><article><span>Run</span><strong>{label[run.status] || run.status}</strong></article><article><span>当前阶段</span><strong>{currentStage(snapshot.day)}</strong></article><article><span>Agent</span><strong>{snapshot.agent_counts?.completed || 0} 完成 · {(snapshot.agent_counts?.running || 0) + (snapshot.agent_counts?.retrying || 0)} 进行 · {snapshot.agent_counts?.failed || 0} 失败</strong></article><article><span>事件流</span><strong>{streamState} · #{snapshot.last_event_id}</strong></article></div>
     <DayCycle day={snapshot.day}/><div className="runtime-grid"><AgentBoard agents={snapshot.agents || []} focusId={focusAgent?.agent_id} onFocus={id=>{setFocus(id);setAutoFollow(false);}} timeout={run.config?.agent_timeout ?? 300} now={now}/><div><div className="runtime-title follow-toggle"><Button size="small" type={autoFollow?'primary':'text'} onClick={()=>setAutoFollow(v=>!v)}>自动跟随最新 Agent {autoFollow?'开':'关'}</Button></div><Pipeline agent={focusAgent} now={now} runId={runId} live={activeRun(run.status)}/></div></div>
     <div className="runtime-grid"><Card className="runtime-panel"><h2>Today Summary</h2><div className="summary-grid">{Object.entries(snapshot.today_summary||snapshot.agent_counts||{}).map(([key,value])=><div key={key}><strong>{value}</strong><span>{label[key]||key}</span></div>)}</div></Card><Card className="runtime-panel"><h2>Recent Events</h2><div className="event-list">{events.length?events.map(item=><button key={item.event_id} onClick={()=>item.agent_id&&setFocus(item.agent_id)}><span>#{item.event_id} · {item.scope}/{item.stage}</span><b>{item.message}</b><StateTag value={item.event?.replace('stage_','')}/></button>):<p className="runtime-empty">高层事件会在运行开始后出现。</p>}</div></Card></div>

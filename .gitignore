@@ -66,3 +66,11 @@ backend/data/
 studio/backend/data/
 
 runs
+# Local financial-data credentials and licensed data; never publish these inputs.
+config/data_sources.yaml
+data/market_staging/
+data/market_snapshots/
+
+# Frontend source helpers must not be hidden by the Python lib/ rule.
+!frontend/src/lib/
+!frontend/src/lib/**
