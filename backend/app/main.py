@@ -6,7 +6,7 @@ import json
 import shutil
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,6 +55,16 @@ class LanguageModelUpdate(BaseModel):
     base_url: str = Field(default="", max_length=1000)
     timeout: int | float | None = Field(default=None, ge=0)
     # Omit this field to keep the current secret. Send an empty string to clear it.
+    api_key: str | None = Field(default=None, max_length=2000)
+
+
+class ModelTestRequest(BaseModel):
+    """Unsaved form values to test; omitted fields fall back to the saved config."""
+    provider: str | None = Field(default=None, max_length=80)
+    model_name: str | None = Field(default=None, max_length=200)
+    base_url: str | None = Field(default=None, max_length=1000)
+    endpoint: str | None = Field(default=None, max_length=1000)
+    timeout: int | float | None = Field(default=None, ge=0)
     api_key: str | None = Field(default=None, max_length=2000)
 
 
@@ -200,6 +210,10 @@ def create_app(
         return model_settings_service.update(
             "embedding", body.model_dump(exclude_unset=True), api_key_provided="api_key" in body.model_fields_set
         )
+
+    @app.post("/api/settings/models/{kind}/test")
+    def test_model(kind: Literal["language", "embedding"], body: ModelTestRequest | None = None):
+        return model_settings_service.test(kind, (body or ModelTestRequest()).model_dump(exclude_none=True))
 
     @app.get("/api/settings/data-sources")
     def data_sources():

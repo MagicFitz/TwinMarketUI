@@ -5,6 +5,7 @@ import { Definition, Empty, PageHeader, Panel, Stat } from "./ui.jsx";
 import { AgentExplorer } from "./agents/AgentExplorer.jsx";
 import { MarketChart } from "./MarketChart.jsx";
 import { MarketWorkbench, TushareConnection } from "./MarketData.jsx";
+import { ModelSettings } from "./ModelSettings.jsx";
 
 // 尚未开放的写操作：保持可聚焦，用 Tooltip 说明原因。
 function PlannedButton({ children, variant = "soft" }) {
@@ -142,31 +143,14 @@ export function MarketSpace({ catalog, refresh }) {
   );
 }
 
-export function SettingSpace({ catalog, compact, setCompact }) {
+export function SettingSpace({ compact, setCompact }) {
   return (
     <>
       <PageHeader title="设置" />
       <Flex direction="column" gap="4" className="settings">
         <section id="models">
-          <Panel title="模型连接" hint="仅读取名称与配置文件存在性，不返回密钥。未测试不代表在线。">
-            <Flex direction="column">
-              {catalog.connections.map((c) => (
-                <Flex key={c.kind} align="center" gap="4" py="3" className="divided">
-                  <Box flexGrow="1" minWidth="0">
-                    <Heading as="h3" size="2">
-                      {c.name}
-                    </Heading>
-                    <Text size="1" color="gray">
-                      {c.model || "未识别"}
-                    </Text>
-                  </Box>
-                  <Badge color={c.configured ? "amber" : "gray"} variant="soft">
-                    {c.configured ? "未测试" : "未配置"}
-                  </Badge>
-                  <PlannedButton>配置</PlannedButton>
-                </Flex>
-              ))}
-            </Flex>
+          <Panel title="模型连接" hint="OpenAI 兼容接口。API Key 只保存在本机配置文件中，页面不会读回明文。">
+            <ModelSettings />
           </Panel>
         </section>
         <section id="sources">
