@@ -33,7 +33,7 @@ try {
     await page.getByRole('heading', { level: 1, name: '实验' }).waitFor();
     await rows.first().waitFor();
     assert.equal(await rows.count(), runs.length);
-    for (const header of ['名称', '状态', '进度', '创建时间', '更新时间', '操作'])
+    for (const header of ['别名', '状态', '进度', '实验 ID', '创建时间', '更新时间', '操作'])
       await page.getByRole('columnheader', { name: header, exact: true }).waitFor();
     assert.equal(await page.getByRole('columnheader', { name: '市场快照' }).count(), 0);
     await page.getByRole('navigation', { name: '面包屑' }).getByText('实验').waitFor();
@@ -84,6 +84,10 @@ try {
     await page.getByRole('button', { name: '创建实验' }).click();
     await page.waitForURL('**/studio/Experiment/new');
     await page.getByRole('heading', { level: 1, name: '新建实验' }).waitFor();
+    // 默认别名为“实验 N”，N 不小于已有实验数 + 1。
+    await page.waitForFunction(() => /^实验 \d+$/.test(document.querySelector('input[required]')?.value || ''));
+    const suggested = Number((await page.getByLabel('实验别名').inputValue()).split(' ')[1]);
+    assert.ok(suggested > runs.length, `默认序号 ${suggested} 应大于已有实验数 ${runs.length}`);
     const crumbs = page.getByRole('navigation', { name: '面包屑' });
     await crumbs.getByRole('link', { name: '实验' }).waitFor();
     await crumbs.getByText('新建实验').waitFor();
@@ -99,7 +103,7 @@ try {
 
   await step('unsaved edits prompt before leaving; declining stays, accepting navigates', async () => {
     await page.goto(`${base}/studio/Experiment/new?from=${encodeURIComponent(done.run_id)}`);
-    const name = page.getByLabel('实验名称');
+    const name = page.getByLabel('实验别名');
     await page.waitForFunction(expected => document.querySelector('input[required]')?.value === expected, `${done.name} 副本`);
     assert.equal(await name.inputValue(), `${done.name} 副本`, '复制实验应预填源实验配置');
     // 未修改时离开不提示。

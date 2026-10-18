@@ -7,7 +7,7 @@ import { useRouter } from "../router.jsx";
 import { RunMarketSnapshot } from "../MarketData.jsx";
 
 const DEFAULTS = {
-  name: "10 Agent 观察运行",
+  name: "",
   description: "",
   user_count: 10,
   start_date: "2023-06-15",
@@ -20,6 +20,19 @@ const DEFAULTS = {
   market_snapshot_id: undefined,
   allow_missing_news: false,
 };
+// 别名可以重名；默认建议“实验 N”，N 取已有实验总数与已用序号中的较大者 + 1。
+async function suggestName() {
+  const [active, archived] = await Promise.all([
+    fetchJson("/api/runs?page_size=100"),
+    fetchJson("/api/runs?page_size=100&archived=true"),
+  ]);
+  const used = [...active.items, ...archived.items]
+    .map((run) => /^实验\s*(\d+)$/.exec(run.name.trim())?.[1])
+    .filter(Boolean)
+    .map(Number);
+  return `实验 ${Math.max(active.total + archived.total, ...used) + 1}`;
+}
+
 // 复制实验时只带入表单里可编辑的参数，其余配置由后端重新规范化。
 const EDITABLE = Object.keys(DEFAULTS);
 
@@ -89,6 +102,14 @@ export function NewExperiment({ from }) {
       .catch((reason) => setError(`无法读取源实验：${reason.message}`));
   }, [from]);
 
+  useEffect(() => {
+    if (from) return;
+    suggestName()
+      .catch(() => "实验 1")
+      // 只填空白的名称，不覆盖用户已经输入的内容。
+      .then((name) => setForm((previous) => (previous.name ? previous : { ...previous, name })));
+  }, [from]);
+
   // 离开页面时清除确认，避免影响其他页面的跳转。
   useEffect(() => () => setGuard(false), []);
 
@@ -138,9 +159,9 @@ export function NewExperiment({ from }) {
         }
       />
       <Card size="3">
-        <Section title="基本信息" description="名称会显示在实验列表和面包屑中。">
-          <Field label="实验名称">
-            <TextField.Root required value={form.name} onChange={(e) => change("name", e.target.value)} />
+        <Section title="基本信息" description="别名会显示在实验列表和面包屑中。">
+          <Field label="实验别名" hint="别名可以重名；实验 ID 会在创建时按时间自动生成，作为唯一标识。">
+            <TextField.Root required value={form.name} placeholder="实验 1" onChange={(e) => change("name", e.target.value)} />
           </Field>
           <Field label="描述（可选）">
             <TextArea value={form.description} onChange={(e) => change("description", e.target.value)} rows={2} placeholder="记录本次实验的假设或变量" />

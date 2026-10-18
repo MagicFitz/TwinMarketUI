@@ -40,6 +40,16 @@ def _settings(settings: Settings | None) -> Settings:
     return settings if settings is not None else get_settings()
 
 
+def time_run_id(now: datetime | None = None) -> str:
+    """Time-ordered unique run id, e.g. ``20261018-153012-3f9a``.
+
+    The short random suffix keeps ids unique when several runs are created within
+    the same second.  The id is independent of the user-facing name, so names may
+    repeat freely.
+    """
+    return f"{(now or datetime.now()).strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:4]}"
+
+
 def safe_run_id(value: str) -> str:
     value = "".join(char if char.isalnum() or char in "-_" else "-" for char in value.lower()).strip("-")
     return value[:64] or f"run-{uuid4().hex[:12]}"
@@ -165,14 +175,20 @@ def create_run(
     """Allocate a private run directory and persist its registry record."""
     settings = _settings(settings)
     config = normalize_config(request.get("config") or request, settings)
-    requested = request.get("run_id") or request.get("name") or f"run-{uuid4().hex[:12]}"
-    run_id = safe_run_id(requested)
-    output = settings.runs_dir / run_id
     settings.runs_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        output.mkdir(mode=0o700)
-    except FileExistsError as error:
-        raise ConflictError("run_id 已存在，拒绝覆盖运行目录") from error
+    explicit = request.get("run_id")
+    # 显式 run_id 冲突时拒绝；自动生成的时间 ID 冲突时换一个后缀重试。
+    for _ in range(1 if explicit else 5):
+        run_id = safe_run_id(explicit) if explicit else time_run_id()
+        output = settings.runs_dir / run_id
+        try:
+            output.mkdir(mode=0o700)
+            break
+        except FileExistsError as error:
+            if explicit:
+                raise ConflictError("run_id 已存在，拒绝覆盖运行目录") from error
+    else:
+        raise ConflictError("无法分配唯一的 run_id，请重试")
     try:
         write_manifest(output, config, settings)
         (output / "state.json").write_text(

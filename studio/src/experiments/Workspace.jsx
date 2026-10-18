@@ -464,7 +464,8 @@ function ConfigTab({ run, actions }) {
         <Panel title="生命周期">
           <Definition
             values={[
-              ["Run ID", run.run_id],
+              ["实验 ID", run.run_id],
+              ["别名", run.name],
               ["创建时间", stamp(run.created_at)],
               ["开始时间", stamp(run.started_at)],
               ["结束时间", stamp(run.ended_at)],
@@ -509,7 +510,7 @@ export function Workspace({ runId, tab, agent, refresh }) {
             {run.health && run.health !== "healthy" && <StatusBadge value={run.health} size="2" />}
           </Flex>
           <Text as="p" size="2" color="gray" mt="1">
-            {run.config.start_date} → {run.config.end_date} · {n(run.config.user_count)} Agents ·{" "}
+            ID {run.run_id} · {run.config.start_date} → {run.config.end_date} · {n(run.config.user_count)} Agents ·{" "}
             {run.config.market_snapshot_id || "内置历史文件"} · 创建于 {stamp(run.created_at)}
           </Text>
         </Box>

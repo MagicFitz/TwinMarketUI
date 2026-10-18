@@ -31,7 +31,7 @@ import { RunControlButton, RunMoreMenu, useRunActions } from "./run-actions.jsx"
 
 // 可选列：fixed 的列始终显示；默认隐藏的列可在“列设置”里打开。
 const COLUMNS = [
-  { id: "name", label: "名称", fixed: true },
+  { id: "name", label: "别名", fixed: true },
   { id: "status", label: "状态" },
   { id: "progress", label: "进度" },
   { id: "range", label: "模拟区间" },
@@ -39,7 +39,7 @@ const COLUMNS = [
   { id: "snapshot", label: "市场快照", hidden: true },
   { id: "workers", label: "并发 Worker", numeric: true, hidden: true },
   { id: "seed", label: "随机种子", hidden: true },
-  { id: "runId", label: "Run ID", hidden: true },
+  { id: "runId", label: "实验 ID" },
   { id: "created", label: "创建时间" },
   { id: "updated", label: "更新时间" },
   { id: "actions", label: "操作", fixed: true },
@@ -195,6 +195,9 @@ function RunCards({ runs, actions }) {
                 <Text as="p" size="1" color="gray" mt="1">
                   {cell.range(run)} · {n(run.config?.user_count)} Agents
                 </Text>
+                <Text as="p" size="1" color="gray">
+                  ID {run.run_id}
+                </Text>
               </Box>
               <StatusBadge value={run.status} />
             </Flex>
@@ -255,7 +258,7 @@ export function ExperimentList({ refresh }) {
         }
       />
       <Flex gap="3" align="center" wrap="wrap" mb="4" className="list-toolbar">
-        <TextField.Root placeholder="搜索名称或 Run ID" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="搜索实验" className="search-field">
+        <TextField.Root placeholder="搜索别名或实验 ID" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="搜索实验" className="search-field">
           <TextField.Slot>{icon(MagnifyingGlassIcon)}</TextField.Slot>
         </TextField.Root>
         <Select.Root value={status} onValueChange={setStatus}>
