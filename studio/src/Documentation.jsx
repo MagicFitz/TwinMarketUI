@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Card, Input, Tag, CodeBlock } from 'animal-island-ui';
+import { Badge, Button, Card, Heading, Text, TextField } from '@radix-ui/themes';
+import { PageHeader } from './ui.jsx';
 import { MagnifyingGlassIcon, ReloadIcon } from '@radix-ui/react-icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -56,24 +57,24 @@ export function Documentation({refresh}) {
   }
   const matches=items.filter(item=>`${item.title} ${item.category}`.toLowerCase().includes(query.toLowerCase()));
   return <>
-    <div className="page-heading"><h1>文档</h1><Button type="primary" onClick={()=>setManual(n=>n+1)} icon={<ReloadIcon width={18} height={18} aria-hidden="true" />}>刷新文档</Button></div>
+    <PageHeader title="文档" actions={<Button variant="soft" color="gray" onClick={()=>setManual(n=>n+1)}><ReloadIcon width={14} height={14} aria-hidden="true" />刷新文档</Button>}/>
     <div className="docs-layout">
-      <Card className="docs-index">
-        <Input size="small" aria-label="搜索文档" placeholder="搜索文档" value={query} onChange={e=>setQuery(e.target.value)} prefix={<MagnifyingGlassIcon width={16} height={16} aria-hidden="true" />}/>
+      <Card size="2" className="docs-index">
+        <TextField.Root aria-label="搜索文档" placeholder="搜索文档" value={query} onChange={e=>setQuery(e.target.value)}><TextField.Slot><MagnifyingGlassIcon width={16} height={16} aria-hidden="true" /></TextField.Slot></TextField.Root>
         <nav aria-label="文档列表">{matches.map(item=><a key={item.path} href={`/studio/Documentation?doc=${encodeURIComponent(item.path)}`} aria-current={item.path===selected?'page':undefined} onClick={e=>{if(e.metaKey||e.ctrlKey)return;e.preventDefault();select(item.path);}}><span>{item.title}</span><small>{item.category}</small></a>)}</nav>
-        {!matches.length&&<p className="empty">{catalog.loading?'读取中…':catalog.error || (query?'无匹配文档':'暂无已发布文档')}</p>}
+        {!matches.length&&<Text as="p" size="2" color="gray" className="empty">{catalog.loading?'读取中…':catalog.error || (query?'无匹配文档':'暂无已发布文档')}</Text>}
       </Card>
-      <Card className="docs-reader">
+      <Card size="3" className="docs-reader">
         {entry&&article.data?<>
-          <header className="doc-heading"><Tag variant="soft" size="small">{entry.category}</Tag><h2>{article.data.title}</h2></header>
+          <header className="doc-heading"><Badge variant="soft" color="gray">{entry.category}</Badge><Heading as="h2" size="7" mt="3">{article.data.title}</Heading></header>
           <article className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{
             a:documentLink,
             img:({alt})=><span className="image-description">[图片：{alt || '未命名'}]</span>,
-            pre:({children})=><CodeBlock code={String(React.Children.toArray(children)[0]?.props?.children || '').replace(/\n$/,'')}/>,
+            pre:({children})=><pre className="code-block">{String(React.Children.toArray(children)[0]?.props?.children || '').replace(/\n$/,'')}</pre>,
             table:({children})=><div className="table-wrap"><table>{children}</table></div>,
           }}>{article.data.content.replace(/^#\s+[^\n]+\n/,'')}</ReactMarkdown></article>
           <div className="doc-source">docs/{entry.path}</div>
-        </>:<div className="empty" role="status">{catalog.error || article.error || (catalog.loading || (entry&&article.loading)?'读取中…':requested?'文档未发布或已撤回':'暂无已发布文档')}</div>}
+        </>:<Text as="div" size="2" color="gray" className="empty" role="status">{catalog.error || article.error || (catalog.loading || (entry&&article.loading)?'读取中…':requested?'文档未发布或已撤回':'暂无已发布文档')}</Text>}
       </Card>
     </div>
   </>;

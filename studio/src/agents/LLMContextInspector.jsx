@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Drawer, Tag } from 'animal-island-ui';
+import { Badge, Button, Select, SegmentedControl, Text } from '@radix-ui/themes';
 
 // trading_agent.py / utility.py 中发起 LLM 调用的函数 → 可读名称
 const STEP_NAME = {
@@ -60,10 +60,10 @@ function MessageItem({message, isNew}) {
   const preview = message.content.length > 220 && !open ? `${message.content.slice(0, 220)}…` : message.content;
   return <article className={`ctx-message role-${message.role}`}>
     <header>
-      <Tag size="small" variant="soft">{ROLE_NAME[message.role] || message.role}</Tag>
-      {isNew && <Tag size="small" color="orange" variant="soft">本次新增</Tag>}
+      <Badge variant="soft" color="gray">{ROLE_NAME[message.role] || message.role}</Badge>
+      {isNew && <Badge variant="soft" color="amber">本次新增</Badge>}
       <span>约 {tokens(message.est_tokens)} tokens · {message.chars} 字符</span>
-      {message.content.length > 220 && <Button size="small" type="text" onClick={() => setOpen(value => !value)}>{open ? '收起' : '展开全文'}</Button>}
+      {message.content.length > 220 && <Button size="1" variant="ghost" color="gray" onClick={() => setOpen(value => !value)}>{open ? '收起' : '展开全文'}</Button>}
     </header>
     <pre>{preview}</pre>
   </article>;
@@ -95,7 +95,7 @@ function CallRow({call, record, open, onToggle}) {
   </section>;
 }
 
-function Inspector({runId, agentId, live}) {
+export function LLMContext({runId, agentId, live}) {
   const [date, setDate] = useState(null);
   const [attemptIndex, setAttemptIndex] = useState(-1);
   const [openSeq, setOpenSeq] = useState(null);
@@ -104,9 +104,9 @@ function Inspector({runId, agentId, live}) {
   const record = attempts[attemptIndex < 0 ? attempts.length - 1 : attemptIndex];
   const peak = useMemo(() => (record?.calls || []).reduce((best, call) => call.est_input_tokens > (best?.est_input_tokens || 0) ? call : best, null), [record]);
 
-  if (error && !data) return <p className="runtime-empty">读取失败：{error}</p>;
-  if (!data) return <p className="runtime-empty">读取中…</p>;
-  if (!record) return <p className="runtime-empty">这个 Agent 在 {data.date || '当前日期'} 还没有 LLM 调用记录。未激活的 Agent 不调用 LLM。</p>;
+  if (error && !data) return <Text as="p" size="2" color="red">读取失败：{error}</Text>;
+  if (!data) return <Text as="p" size="2" color="gray">读取中…</Text>;
+  if (!record) return <Text as="p" size="2" color="gray">这个 Agent 在 {data.date || '当前日期'} 还没有 LLM 调用记录。未激活的 Agent 不调用 LLM。</Text>;
   return <div className="ctx-inspector">
     <div className="ctx-summary">
       <div><span>LLM 调用</span><strong>{record.calls.length} 次</strong></div>
@@ -115,26 +115,16 @@ function Inspector({runId, agentId, live}) {
       <div><span>模型</span><strong>{record.model}</strong></div>
     </div>
     <div className="ctx-controls">
-      {data.dates.length > 1 && <select value={data.date || ''} onChange={event => { setDate(event.target.value); setAttemptIndex(-1); }}>
-        {data.dates.map(value => <option key={value} value={value}>{value}</option>)}
-      </select>}
-      {attempts.length > 1 && attempts.map((item, index) => <Button key={item.attempt} size="small"
-        type={(attemptIndex < 0 ? attempts.length - 1 : attemptIndex) === index ? 'primary' : 'text'} onClick={() => setAttemptIndex(index)}>第 {item.attempt} 次尝试</Button>)}
+      {data.dates.length > 1 && <Select.Root size="1" value={data.date || undefined} onValueChange={value => { setDate(value); setAttemptIndex(-1); }}>
+        <Select.Trigger aria-label="选择模拟日" /><Select.Content>{data.dates.map(value => <Select.Item key={value} value={value}>{value}</Select.Item>)}</Select.Content>
+      </Select.Root>}
+      {attempts.length > 1 && <SegmentedControl.Root size="1" value={String(attemptIndex < 0 ? attempts.length - 1 : attemptIndex)} onValueChange={value => setAttemptIndex(Number(value))}>
+        {attempts.map((item, index) => <SegmentedControl.Item key={item.attempt} value={String(index)}>第 {item.attempt} 次尝试</SegmentedControl.Item>)}
+      </SegmentedControl.Root>}
       <span className="ctx-legend"><i className="role-system"/>系统 <i className="role-user"/>用户 <i className="role-assistant"/>模型 <i className="output"/>输出上限 · 实色为本次新增</span>
     </div>
     <p className="ctx-note">Token 为本地估算（中文约 1 token/字），“实际”来自模型服务返回的 prompt_tokens。</p>
     {record.calls.map(call => <CallRow key={call.seq} call={call} record={record}
       open={openSeq === call.seq} onToggle={() => setOpenSeq(value => value === call.seq ? null : call.seq)}/>)}
   </div>;
-}
-
-export function LLMContextButton({runId, agent, live}) {
-  const [open, setOpen] = useState(false);
-  if (!agent) return null;
-  return <>
-    <Button size="small" onClick={() => setOpen(true)}>LLM 上下文</Button>
-    <Drawer open={open} title={`Agent ${agent.agent_id} · LLM 上下文`} onClose={() => setOpen(false)} pushBackground={false} width="min(860px,100vw)">
-      {open && <Inspector runId={runId} agentId={agent.agent_id} live={live}/>}
-    </Drawer>
-  </>;
 }

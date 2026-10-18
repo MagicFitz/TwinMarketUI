@@ -4,6 +4,8 @@ Confirmed product architecture (2026-09-12): the four primary spaces are Experim
 
 Run the local server yourself and open the preview in the browser available to this environment. Do not give the user server-start instructions when you can run it.
 
+UI framework decision (2026-10-18): Studio uses Radix Themes (accent teal, gray slate) instead of Animal Island UI. Button roles: primary `solid` (at most one per area), secondary `soft` gray, stop/delete `soft` red, inline `ghost`; selection states use `SegmentedControl`/`Tabs`, never a primary button. Experiment space has two levels only: a list (table/card toggle, user-selectable columns including created/updated time) and a per-run workspace that merges running and results into tabs. Creating an experiment is a standalone page with breadcrumb and a safe back path (cancel returns to the origin; unsaved edits prompt before leaving). Agent views in the Agent space and the run workspace share one `AgentExplorer` component with a side detail panel instead of stacked drawers.
+
 Responsive preference: in portrait/mobile layouts, the primary space switcher is a fixed bottom navigation bar. Do not place the space-switching controls above the workspace content.
 
 Before making substantial visual changes, use the Product Design plugin's `get-context` skill when the visual source is unclear or no longer matches the current goal. When the user gives durable prototype-specific design feedback, preferences, or decisions, record them in `AGENTS.md`.

@@ -62,6 +62,12 @@ class RunRegistry:
         item["config"] = json.loads(item.pop("config_json"))
         item["checkpoint"] = json.loads(item.pop("checkpoint_json"))
         item["archived"] = bool(item["archived"])
+        # 没有单独的 updated_at 列：取生命周期中最近一次写入的时间（均为 UTC ISO 字符串，可直接比较）。
+        item["updated_at"] = max(
+            value
+            for value in (item["created_at"], item["started_at"], item["ended_at"], item["last_heartbeat"])
+            if value
+        )
         return item
 
     def create(
