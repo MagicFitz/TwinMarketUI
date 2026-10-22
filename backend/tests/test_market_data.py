@@ -214,10 +214,29 @@ class SnapshotTests(MarketFixture):
         _, metadata = self.sync(FakeTushare(self.settings.data_dir, denied=True))
         self.assertEqual(metadata["datasets"]["daily_basic"]["status"], "missing")
         job = self.service.create(self.request(), launch=False)
-        result = self.service.execute(job["job_id"], FakeTushare(self.settings.data_dir, incomplete=True).provider())
+        incomplete = FakeTushare(self.settings.data_dir, incomplete=True)
+        result = self.service.execute(job["job_id"], incomplete.provider())
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "DATA_COVERAGE_INCOMPLETE")
         self.assertEqual(len(self.service.registry.snapshots()), 1)
+        # Failure is detected on the first day and leaves no staging data behind.
+        self.assertFalse(any(call["api_name"] == "daily" and call["params"]["trade_date"] == "20250114"
+                             for call in incomplete.calls))
+        self.assertFalse(self.settings.data_path("market_staging", job["job_id"]).exists())
+
+    def test_suspended_constituent_of_small_basket_does_not_block_sync(self):
+        # TLEI has two constituents; one suspended leaves about half the weight.
+        suspended = load_assets(self.settings.data_dir / "market_assets.yaml")[0]["assets"]["TLEI"]["constituents"][1]["ts_code"]
+        self.fake.codes.remove(suspended)
+        _, metadata = self.sync()
+        self.assertLess(metadata["quality"]["minimum_weight_coverage"], .8)
+        self.assertTrue(any("2025-01-13 至 2025-01-14" in warning and "停牌" in warning
+                            for warning in metadata["quality"]["warnings"]))
+
+    def test_end_date_before_synced_history_is_rejected(self):
+        with self.assertRaises(MarketError) as caught:
+            self.service.create(self.request(start_date="2025-01-08", end_date="2025-01-09"), launch=False)
+        self.assertEqual(caught.exception.code, "INVALID_DATE_RANGE")
 
     def test_cancel_conflict_and_restart_persistence(self):
         job = self.service.create(self.request(), launch=False)
@@ -239,6 +258,22 @@ class SnapshotTests(MarketFixture):
         result = self.service.execute(job["job_id"], TushareProvider(SECRET, post=cancel, interval=0))
         self.assertEqual(result["status"], "cancelled")
         self.assertFalse(self.service.registry.snapshots())
+
+    def test_snapshot_market_serves_synced_prices(self):
+        _, metadata = self.sync()
+        client = TestClient(create_app(self.settings))
+        response = client.get(f"/api/market/snapshots/{metadata['snapshot_id']}/market", params={"asset": "TLEI"})
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["selected"], "TLEI")
+        self.assertEqual(len(body["assets"]), 10)
+        self.assertEqual(body["prices"][-1]["date"], "2025-01-14")
+        self.assertEqual(body["prices"][-1]["vol"], 2000)
+        self.assertIsNone(body["prices"][0]["vol"])  # legacy history has no volume
+        fallback = client.get(f"/api/market/snapshots/{metadata['snapshot_id']}/market", params={"asset": "UNKNOWN"}).json()
+        self.assertEqual(fallback["selected"], body["assets"][0]["stock_id"])
+        self.assertTrue(fallback["prices"])
+        self.assertEqual(client.get("/api/market/snapshots/market-missing/market").status_code, 404)
 
     def test_duplicate_sync_produces_new_snapshot_without_mutating_old(self):
         _, first = self.sync()

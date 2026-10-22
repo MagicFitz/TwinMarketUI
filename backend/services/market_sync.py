@@ -81,6 +81,13 @@ class MarketSyncService:
                                                    error="排队任务未启动，可重新同步"))
             if job["status"] in {"queued", "running"} and job["pid"]:
                 try:
+                    # A crashed worker launched by this server stays a zombie, which
+                    # still answers kill(0); reap it first so it reads as exited.
+                    try:
+                        if os.waitpid(job["pid"], os.WNOHANG)[0]:
+                            raise ProcessLookupError
+                    except ChildProcessError:
+                        pass
                     os.kill(job["pid"], 0)
                 except ProcessLookupError:
                     job.update(self.registry.update_job(job["job_id"], status="cancelled" if job["cancel_requested"] else "failed",
@@ -114,6 +121,9 @@ class MarketSyncService:
         start = iso_date(request.get("start_date") if mode == "backfill" else dates[max(1, len(dates) - 3)])
         if start > end or start <= dates[0]:
             raise MarketError("INVALID_DATE_RANGE", "同步范围须有桥接历史且不能跳过未同步日期")
+        # The new snapshot keeps history before start only, so an earlier end would drop synced dates.
+        if end < dates[-1]:
+            raise MarketError("INVALID_DATE_RANGE", f"结束日期不能早于本地已同步日期 {dates[-1]}，否则会丢弃之后的行情")
         datasets = request.get("datasets") or ["trade_cal", "daily", "daily_basic"]
         if not {"trade_cal", "daily"}.issubset(datasets) or set(datasets) - set(FIELDS):
             raise MarketError("DATASET_UNSUPPORTED", "交易日历和日线必选；本期可选每日估值")
@@ -229,6 +239,11 @@ class MarketSyncService:
                 params = {"trade_date": day.replace("-", "")}
                 rows = provider.fetch("daily", params, record=record)
                 daily[day] = self._rows_by_code(rows, codes, day)
+                # Individual suspensions are normal; a broadly missing cross-section is not.
+                # Fail here rather than after fetching the whole range.
+                if len(daily[day]) < .8 * len(codes):
+                    raise MarketError("DATA_COVERAGE_INCOMPLETE",
+                                      f"{day} 仅返回 {len(daily[day])}/{len(codes)} 只成分股行情，截面数据不完整")
                 if optional_available:
                     try:
                         rows = provider.fetch("daily_basic", params, record=record)
@@ -309,6 +324,8 @@ class MarketSyncService:
         finally:
             if published is not None and not any(item["snapshot_id"] == published.name for item in self.registry.snapshots()):
                 shutil.rmtree(published, ignore_errors=True)
+            # Failed or cancelled jobs must not leave partial staging data behind.
+            shutil.rmtree(stage, ignore_errors=True)
 
     @staticmethod
     def _rows_by_code(rows, codes, day):

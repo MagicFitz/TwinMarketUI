@@ -253,6 +253,10 @@ def create_app(
         metadata, _ = resolve_snapshot(settings, snapshot_id, allow_missing_news=True)
         return metadata
 
+    @app.get("/api/market/snapshots/{snapshot_id}/market")
+    def snapshot_market(snapshot_id: str, asset: str | None = None):
+        return market_service.snapshot_market(snapshot_id, asset)
+
     @app.post("/api/market/snapshots/{snapshot_id}/activate")
     def activate_snapshot(snapshot_id: str):
         return market_sync_service.activate(snapshot_id)

@@ -25,6 +25,8 @@ def ratio(rows, constituents, field):
 
 def build_indices(assets, history, daily, basics, trading_dates):
     warnings, coverage_report, generated = [], [], []
+    # (index, constituent) -> [index, constituent, first, last, days] of an ongoing suspension.
+    suspended, runs = {}, []
     histories = {code: history[history.ts_code == code].sort_values("date") for code in assets}
     for code, frame in histories.items():
         if frame.empty or number(frame.iloc[-1]["close"]) is None or float(frame.iloc[-1]["close"]) <= 0:
@@ -37,8 +39,15 @@ def build_indices(assets, history, daily, basics, trading_dates):
             valid = []
             for c in constituents:
                 row = rows.get(c["ts_code"])
+                key = (code, c["ts_code"])
                 if not row:
-                    continue  # Missing constituents contribute zero return, without renormalization.
+                    # A constituent absent from an otherwise complete cross-section is
+                    # suspended: zero return, without renormalization.
+                    run = suspended.setdefault(key, [code, c, day, day, 0])
+                    run[3:] = [day, run[4] + 1]
+                    continue
+                if key in suspended:
+                    runs.append(suspended.pop(key))
                 close, previous, volume, amount = (number(row.get(k)) for k in ("close", "pre_close", "vol", "amount"))
                 if any(v is None for v in (close, previous, volume, amount)) or close <= 0 or previous <= 0 or volume < 0 or amount < 0:
                     raise MarketError("SNAPSHOT_VALIDATION_FAILED", f"{day} {c['ts_code']} 行情数值无效")
@@ -49,10 +58,6 @@ def build_indices(assets, history, daily, basics, trading_dates):
                 valid.append((c, row, change))
             coverage = sum(c["weight"] for c, _, _ in valid)
             coverage_report.append({"date": day, "ts_code": code, "weight": coverage})
-            if coverage < .8 - 1e-9:
-                raise MarketError("DATA_COVERAGE_INCOMPLETE", f"{day} {code} 有效成分权重低于 80%")
-            if coverage < .95:
-                warnings.append(f"{day} {code} 有效成分权重 {coverage:.2%}，缺失成分按停牌处理")
             r = sum(c["weight"] * change for c, _, change in valid)
             previous = last_prices[code]
             close = previous * (1 + r)
@@ -73,6 +78,10 @@ def build_indices(assets, history, daily, basics, trading_dates):
             result["dv_ttm"] = sum(w * v for w, v in dividend if v is not None and v >= 0) if result["dv_ttm_coverage"] >= .8 else None
             generated.append(result)
             last_prices[code] = close
+    for code, c, first, last, days in sorted(runs + list(suspended.values()), key=lambda run: (run[2], run[0])):
+        span = first if first == last else f"{first} 至 {last}"
+        warnings.append(f"{code} {c.get('name', c['ts_code'])}（权重 {c['weight']:.2%}）{span} 无行情 {days} 个交易日，"
+                        "按停牌处理，当日收益计 0")
     output = pd.concat([history, pd.DataFrame(generated)], ignore_index=True).sort_values(["ts_code", "date"])
     # Legacy files contain amount rather than volume. Keep those legacy values as-is,
     # while every newly sourced volume is explicitly in shares.

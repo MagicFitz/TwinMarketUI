@@ -65,11 +65,26 @@ function PriceChart({ prices }) {
   );
 }
 
+// Radix Select 不接受空字符串，内置历史文件用占位值表示。
+const LEGACY = "__legacy__";
+
 // 行情组件支持在图表和可读取的表格间切换，二者共用同一份 API 数据。
-export function MarketChart({ run = "template", refresh = 0 }) {
+// selectSnapshot 时可切换市场快照，未手动选择则跟随当前默认快照。
+export function MarketChart({ run = "template", refresh = 0, selectSnapshot = false }) {
   const [asset, setAsset] = useState("");
   const [view, setView] = useState("chart");
-  const state = useData(`/api/runs/${encodeURIComponent(run)}/market?asset=${asset}`, refresh);
+  const [picked, setPicked] = useState(null);
+  const list = useData(selectSnapshot ? "/api/market/snapshots" : null, refresh);
+  const snapshots = list.data?.items || [];
+  const snapshot = picked ?? snapshots.find((s) => s.active)?.snapshot_id ?? LEGACY;
+  // 快照列表读取前不请求行情，避免先闪现内置历史再切换。
+  const waiting = selectSnapshot && !list.data && !list.error;
+  const url = waiting
+    ? null
+    : snapshot !== LEGACY
+      ? `/api/market/snapshots/${encodeURIComponent(snapshot)}/market?asset=${asset}`
+      : `/api/runs/${encodeURIComponent(run)}/market?asset=${asset}`;
+  const state = useData(url, refresh);
   if (!state.data)
     return (
       <Panel title="行情观察">
@@ -81,9 +96,23 @@ export function MarketChart({ run = "template", refresh = 0 }) {
   return (
     <Panel
       title="行情观察"
-      hint={`${d.source}，最近 ${d.prices.length} 个观测点。包含初始化历史；非实时交易报价，使用收盘价而非 OHLC。`}
+      hint={`${d.source}${d.effective_through ? `（有效截至 ${d.effective_through}）` : ""}，最近 ${d.prices.length} 个观测点。包含初始化历史；非实时交易报价，使用收盘价而非 OHLC。`}
       actions={
         <>
+          {snapshots.length > 0 && (
+            <Select.Root value={snapshot} onValueChange={setPicked}>
+              <Select.Trigger aria-label="选择市场快照" />
+              <Select.Content>
+                <Select.Item value={LEGACY}>内置历史文件</Select.Item>
+                {snapshots.map((s) => (
+                  <Select.Item key={s.snapshot_id} value={s.snapshot_id}>
+                    {s.active ? "默认 · " : ""}
+                    {s.snapshot_id}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+          )}
           <Select.Root value={d.selected} onValueChange={setAsset}>
             <Select.Trigger aria-label="选择资产" />
             <Select.Content>
