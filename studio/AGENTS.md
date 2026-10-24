@@ -6,6 +6,8 @@ Run the local server yourself and open the preview in the browser available to t
 
 UI framework decision (2026-10-18): Studio uses Radix Themes (accent teal, gray slate) instead of Animal Island UI. Button roles: primary `solid` (at most one per area), secondary `soft` gray, stop/delete `soft` red, inline `ghost`; run controls use one tone each (2026-10-23): run `solid` teal, resume `solid` blue, stop `soft` red, completed-run results `soft` iris; selection states use `SegmentedControl`/`Tabs`, never a primary button. Experiment space has two levels only: a list (table/card toggle, user-selectable columns including created/updated time) and a per-run workspace that merges running and results into tabs. Creating an experiment is a standalone page with breadcrumb and a safe back path (cancel returns to the origin; unsaved edits prompt before leaving). Agent views in the Agent space and the run workspace share one `AgentExplorer` component with a side detail panel instead of stacked drawers.
 
+Landing page (2026-10-24): the sidebar logo opens `/studio/Home`, a full-page landing (`src/Landing.jsx`) outside the app shell that presents the paper and Research Studio; its images live in `src/assets/landing/`.
+
 Responsive preference: in portrait/mobile layouts, the primary space switcher is a fixed bottom navigation bar. Do not place the space-switching controls above the workspace content.
 
 Before making substantial visual changes, use the Product Design plugin's `get-context` skill when the visual source is unclear or no longer matches the current goal. When the user gives durable prototype-specific design feedback, preferences, or decisions, record them in `AGENTS.md`.
