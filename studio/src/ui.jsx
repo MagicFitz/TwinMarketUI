@@ -60,11 +60,13 @@ export function PageHeader({ title, description, actions }) {
   return (
     <Flex align="center" justify="between" gap="4" wrap="wrap" mb="5">
       <Box>
-        <Heading as="h1" size="6" weight="bold">
-          {title}
-        </Heading>
+        {title && (
+          <Heading as="h1" size="6" weight="bold">
+            {title}
+          </Heading>
+        )}
         {description && (
-          <Text as="p" size="2" color="gray" mt="1">
+          <Text as="p" size="2" color="gray" mt={title ? "1" : "0"}>
             {description}
           </Text>
         )}

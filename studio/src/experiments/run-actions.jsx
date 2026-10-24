@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { AlertDialog, Button, DropdownMenu, Flex } from "@radix-ui/themes";
-import { PauseIcon, PlayIcon, ResetIcon } from "@radix-ui/react-icons";
+import { BarChartIcon, PauseIcon, PlayIcon, ResetIcon } from "@radix-ui/react-icons";
 import { fetchJson, isActiveRun, postJson, runControl } from "../lib.js";
 import { icon } from "../ui.jsx";
 import { useRouter } from "../router.jsx";
@@ -37,23 +37,40 @@ export function useRunActions(onChanged) {
   };
 }
 
-const CONTROL_ICON = { start: PlayIcon, resume: ResetIcon, stop: PauseIcon };
+// 每种操作一个色调：运行 teal、续跑 blue、停止 red、结果 iris，列表里一眼可分。
+const CONTROL_STYLE = {
+  start: { icon: PlayIcon, variant: "solid", color: "teal" },
+  resume: { icon: ResetIcon, variant: "solid", color: "blue" },
+  stop: { icon: PauseIcon, variant: "soft", color: "red" },
+};
 
 export function RunControlButton({ run, actions, size = "2" }) {
   const control = runControl(run.status);
   if (!control) return null;
-  const stop = control.action === "stop";
+  const style = CONTROL_STYLE[control.action];
   return (
     <Button
       size={size}
-      variant={stop ? "soft" : "solid"}
-      color={stop ? "red" : undefined}
+      variant={style.variant}
+      color={style.color}
       loading={actions.isBusy(run, control.action)}
       disabled={!!actions.busy}
       onClick={() => actions.control(run, control.action)}
     >
-      {icon(CONTROL_ICON[control.action], size === "1" ? 12 : 14)}
+      {icon(style.icon, size === "1" ? 12 : 14)}
       {control.label}
+    </Button>
+  );
+}
+
+// 已完成的实验没有运行控制，列表和卡片里改为直达结果页。
+export function RunResultButton({ run, size = "2" }) {
+  const { navigate } = useRouter();
+  if (run.status !== "completed") return null;
+  return (
+    <Button size={size} variant="soft" color="iris" onClick={() => navigate(`/studio/runs/${encodeURIComponent(run.run_id)}/results`)}>
+      {icon(BarChartIcon, size === "1" ? 12 : 14)}
+      结果
     </Button>
   );
 }

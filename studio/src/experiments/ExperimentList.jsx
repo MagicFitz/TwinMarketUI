@@ -27,7 +27,7 @@ import {
 import { n, runProgress, stamp, useData, usePreference } from "../lib.js";
 import { Empty, ErrorCallout, PageHeader, StatusBadge, icon } from "../ui.jsx";
 import { Link, useRouter } from "../router.jsx";
-import { RunControlButton, RunMoreMenu, useRunActions } from "./run-actions.jsx";
+import { RunControlButton, RunMoreMenu, RunResultButton, useRunActions } from "./run-actions.jsx";
 
 // 可选列：fixed 的列始终显示；默认隐藏的列可在“列设置”里打开。
 const COLUMNS = [
@@ -155,6 +155,7 @@ function RunTable({ runs, columns, actions }) {
                       <Table.Cell key={c.id} justify="end">
                         <Flex gap="2" justify="end" align="center">
                           <RunControlButton run={run} actions={actions} size="1" />
+                          <RunResultButton run={run} size="1" />
                           <RunMoreMenu run={run} actions={actions}>
                             <IconButton variant="ghost" color="gray" size="1" aria-label={`${run.name} 更多操作`}>
                               {icon(DotsHorizontalIcon)}
@@ -179,12 +180,23 @@ function RunTable({ runs, columns, actions }) {
 }
 
 function RunCards({ runs, actions }) {
+  const { navigate } = useRouter();
   return (
     <Grid columns={{ initial: "1", sm: "2", lg: "3" }} gap="4">
       {runs.map((run) => {
         const to = `/studio/runs/${encodeURIComponent(run.run_id)}`;
         return (
-          <Card key={run.run_id} size="2" className="run-card">
+          <Card
+            key={run.run_id}
+            size="2"
+            className="run-card"
+            onClick={(event) => {
+              // 与列表行一致：卡片内按钮、菜单和链接自行处理点击，其余区域打开实验。
+              // 菜单弹出的对话框经 Portal 渲染，点击仍会冒泡到卡片，也要排除。
+              if (!event.currentTarget.contains(event.target) || event.target.closest("a,button,[role=menuitem]")) return;
+              navigate(to);
+            }}
+          >
             <Flex justify="between" align="start" gap="3">
               <Box minWidth="0">
                 <Heading as="h3" size="3" truncate>
@@ -212,6 +224,7 @@ function RunCards({ runs, actions }) {
               </Text>
               <Flex gap="2" align="center">
                 <RunControlButton run={run} actions={actions} size="1" />
+                <RunResultButton run={run} size="1" />
                 <RunMoreMenu run={run} actions={actions}>
                   <IconButton variant="ghost" color="gray" size="1" aria-label={`${run.name} 更多操作`}>
                     {icon(DotsHorizontalIcon)}
@@ -249,8 +262,7 @@ export function ExperimentList({ refresh }) {
   return (
     <>
       <PageHeader
-        title="实验"
-        description={runs.data ? `共 ${runs.data.total} 个实验${runs.data.total > items.length ? `，显示最近 ${items.length} 个` : ""}` : undefined}
+        description="点击实验进入工作台查看运行进度与结果。草稿可直接运行，运行中可停止，失败或已停止的实验可从断点续跑，已完成的实验可直接查看结果。"
         actions={
           <Button onClick={() => navigate("/studio/Experiment/new")}>
             {icon(PlusIcon)} 创建实验

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Badge, Box, Flex, IconButton, Text, Theme, Tooltip } from "@radix-ui/themes";
+import { Box, Flex, IconButton, Link as ExternalLink, Text, Theme, Tooltip } from "@radix-ui/themes";
 import {
   ChevronRightIcon,
   CubeIcon,
@@ -65,6 +65,19 @@ function Breadcrumb({ route }) {
   );
 }
 
+// 后端地址由 vite.config.mjs 注入，与开发代理的目标一致。
+const API_TARGET = __API_TARGET__.replace(/\/$/, "");
+
+function RefreshButton({ onClick }) {
+  return (
+    <Tooltip content="立即刷新">
+      <IconButton variant="ghost" color="gray" aria-label="立即刷新" onClick={onClick}>
+        {icon(ReloadIcon)}
+      </IconButton>
+    </Tooltip>
+  );
+}
+
 function Shell() {
   const { route, pathname, navigate } = useRouter();
   const [compact, setCompact] = usePreference("twin-density-compact", false);
@@ -108,18 +121,22 @@ function Shell() {
               </a>
             ))}
           </nav>
-          <div className="sidebar-bottom">
-            <Badge color="gray" variant="soft">本地 · Runtime API</Badge>
-          </div>
+          <Flex className="sidebar-bottom" align="center" justify="between" gap="2">
+            <Tooltip content="打开后端 API 调试页">
+              <ExternalLink href={`${API_TARGET}/docs`} target="_blank" rel="noreferrer" size="1" color="gray" underline="hover" truncate>
+                {API_TARGET.replace(/^https?:\/\//, "")}
+              </ExternalLink>
+            </Tooltip>
+            <RefreshButton onClick={() => setRefresh((v) => v + 1)} />
+          </Flex>
         </aside>
         <div className="workspace">
           <header className="topbar">
             <Breadcrumb route={route} />
-            <Tooltip content="立即刷新">
-              <IconButton variant="ghost" color="gray" aria-label="立即刷新" onClick={() => setRefresh((v) => v + 1)}>
-                {icon(ReloadIcon)}
-              </IconButton>
-            </Tooltip>
+            {/* 移动端隐藏侧栏底部，刷新按钮留在顶栏。 */}
+            <Box className="topbar-refresh">
+              <RefreshButton onClick={() => setRefresh((v) => v + 1)} />
+            </Box>
           </header>
           <Box asChild className="main">
             <main>

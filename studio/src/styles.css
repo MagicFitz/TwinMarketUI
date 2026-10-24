@@ -17,7 +17,8 @@ a { color: inherit; }
 .sidebar nav small { display: block; font-size: 11px; font-weight: 400; color: var(--gray-10); margin-top: 1px; }
 .sidebar nav a.active small { color: var(--accent-10); }
 .sidebar nav a:last-child { margin-top: 12px; }
-.sidebar-bottom { margin-top: auto; padding: 16px 10px 0; }
+.sidebar-bottom { margin-top: auto; padding: 16px 0 0 10px; min-width: 0; }
+.topbar-refresh { display: none; }
 .workspace { margin-left: 220px; min-height: 100vh; padding-bottom: 32px; }
 .topbar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 52px; padding: 0 32px; background: color-mix(in srgb, var(--color-panel-solid) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--gray-a5); }
 .breadcrumb { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -49,11 +50,15 @@ a { color: inherit; }
 .run-table { white-space: nowrap; }
 .run-table th:first-child, .run-table td:first-child { padding-left: var(--space-4); }
 .run-table th:last-child, .run-table td:last-child { padding-right: var(--space-4); }
-.run-table th:last-child, .run-table td:last-child { position: sticky; right: 0; z-index: 1; background: var(--color-panel-solid); box-shadow: -1px 0 0 var(--gray-a4); }
+/* 固定的操作列：左侧分隔线之外保留 Radix 的行底框线，悬停时与整行同色。 */
+.run-table th:last-child, .run-table td:last-child { position: sticky; right: 0; z-index: 1; background: var(--color-panel-solid); box-shadow: -1px 0 0 var(--gray-a4), var(--table-row-box-shadow); }
+.run-table .clickable-row:hover td:last-child { background: linear-gradient(var(--gray-a2), var(--gray-a2)), var(--color-panel-solid); }
 .clickable-row { cursor: pointer; }
 .clickable-row:hover { background: var(--gray-a2); }
 .clickable-row.is-selected { background: var(--accent-a3); }
-.run-card { display: flex; flex-direction: column; }
+.run-card { display: flex; flex-direction: column; cursor: pointer; transition: transform 160ms ease, box-shadow 160ms ease; }
+.run-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-3); }
+.run-card:hover::after { box-shadow: inset 0 0 0 1px var(--accent-a7); }
 
 /* ---------- 新建实验 ---------- */
 .new-experiment { max-width: 980px; }
@@ -161,6 +166,7 @@ a { color: inherit; }
   /* 竖屏/移动端：主空间切换固定在底部导航栏。 */
   .sidebar { inset: auto 0 0; width: 100%; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid var(--gray-a5); border-right: 0; z-index: 40; }
   .brand, .sidebar-bottom { display: none; }
+  .topbar-refresh { display: block; }
   .sidebar nav { display: flex; gap: 2px; }
   .sidebar nav a { flex: 1; flex-direction: column; gap: 4px; padding: 6px 4px; min-width: 56px; font-size: 11px; text-align: center; }
   .sidebar nav a:last-child { margin: 0; }
