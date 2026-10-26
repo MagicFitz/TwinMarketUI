@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { Box, Flex, IconButton, Link as ExternalLink, Text, Theme, Tooltip } from "@radix-ui/themes";
 import {
   ChevronRightIcon,
-  CubeIcon,
   FileTextIcon,
   GearIcon,
   GlobeIcon,
@@ -19,6 +18,7 @@ import { Workspace, WORKSPACE_TABS } from "./experiments/Workspace.jsx";
 import { AgentSpace, MarketSpace, SettingSpace } from "./spaces.jsx";
 import { Documentation } from "./Documentation.jsx";
 import { Landing } from "./Landing.jsx";
+import banner from "./assets/brand/banner.svg";
 
 // 左侧导航的路由段、显示名称和图标。
 const spaces = [
@@ -103,10 +103,7 @@ function Shell() {
       <div className="app">
         <aside className="sidebar">
           <a className="brand" href="/studio/Home" onClick={(e) => { if (!e.metaKey && !e.ctrlKey) { e.preventDefault(); navigate("/studio/Home"); } }}>
-            {icon(CubeIcon, 24)}
-            <span>
-              TwinMarket<small>Research Studio</small>
-            </span>
+            <img src={banner} alt="TwinMarketUI" />
           </a>
           <nav aria-label="主导航">
             {spaces.map((s) => (

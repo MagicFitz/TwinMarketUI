@@ -5,7 +5,6 @@ import {
   BarChartIcon,
   CheckIcon,
   CopyIcon,
-  CubeIcon,
   GearIcon,
   GitHubLogoIcon,
   GlobeIcon,
@@ -15,6 +14,7 @@ import {
 import { icon } from "./ui.jsx";
 import { useRouter } from "./router.jsx";
 import "./landing.css";
+import banner from "./assets/brand/banner.svg";
 import overviewFigure from "./assets/landing/TwinMarket.jpg";
 import frameworkFigure from "./assets/landing/framework.jpg";
 import dataFigure from "./assets/landing/data.jpg";
@@ -206,8 +206,7 @@ export function Landing() {
     <div className="landing">
       <header className="landing-nav">
         <a className="landing-brand" href="/studio/Home" onClick={open("/studio/Home")}>
-          {icon(CubeIcon, 22)}
-          <span>TwinMarket</span>
+          <img src={banner} alt="TwinMarketUI" />
         </a>
         <nav aria-label="页面目录">
           {SECTIONS.map(([id, label]) => (

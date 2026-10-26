@@ -3,8 +3,8 @@
 .landing-wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
 
 .landing-nav { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 24px; height: 60px; padding: 0 max(24px, calc((100% - 1120px) / 2 + 24px)); background: color-mix(in srgb, var(--color-background) 82%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--gray-a4); }
-.landing-brand { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; letter-spacing: -0.3px; text-decoration: none; color: var(--gray-12); }
-.landing-brand svg { color: var(--accent-10); }
+.landing-brand { display: block; flex: none; }
+.landing-brand img { display: block; height: 40px; width: auto; }
 .landing-nav nav { display: flex; gap: 4px; margin-left: auto; }
 .landing-nav nav a { padding: 6px 12px; border-radius: var(--radius-3); font-size: 14px; color: var(--gray-11); text-decoration: none; }
 .landing-nav nav a:hover { background: var(--gray-a3); color: var(--gray-12); }
