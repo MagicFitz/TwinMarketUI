@@ -4,7 +4,7 @@ import { ChevronDownIcon, ChevronRightIcon } from "@radix-ui/react-icons";
 import { fetchJson, postJson } from "../lib.js";
 import { ErrorCallout, Notice, PageHeader, icon } from "../ui.jsx";
 import { useRouter } from "../router.jsx";
-import { RunMarketSnapshot } from "../MarketData.jsx";
+import { RunMarketTemplate } from "../MarketData.jsx";
 
 const DEFAULTS = {
   name: "",
@@ -17,8 +17,9 @@ const DEFAULTS = {
   activate_prob: 0.2,
   prob_of_technical: 0.3,
   random_seed: 20260916,
-  market_snapshot_id: undefined,
-  allow_missing_news: false,
+  // undefined：等待读取默认模板；""：内置历史文件；否则为模板 ID 或复制来的 "id@版本"。
+  market_template: undefined,
+  data_version: null,
 };
 // 别名可以重名；默认建议“实验 N”，N 取已有实验总数与已用序号中的较大者 + 1。
 async function suggestName() {
@@ -94,7 +95,9 @@ export function NewExperiment({ from }) {
         setForm((previous) => ({
           ...previous,
           ...config,
-          market_snapshot_id: run.config?.market_snapshot_id || "",
+          // 旧版快照实验没有模板，复制时改用内置历史文件，由用户重新选择。
+          market_template: run.config?.market_template || "",
+          data_version: run.config?.market_template ? run.config.data_version : null,
           name: `${run.name} 副本`,
           description: run.description || "",
         }));
@@ -120,6 +123,18 @@ export function NewExperiment({ from }) {
       setGuard(true);
     }
   };
+  const pickTemplate = (value) => {
+    // 首次加载时组件会自动选中默认模板，这不算用户修改。
+    if (form.market_template !== undefined && value !== form.market_template && !dirty.current) {
+      dirty.current = true;
+      setGuard(true);
+    }
+    setForm((previous) => {
+      // 换模板后不再沿用源实验固定的数据版本。
+      const keep = previous.market_template === undefined || value === previous.market_template;
+      return { ...previous, market_template: value, data_version: keep ? previous.data_version : null };
+    });
+  };
   const number = (key) => (event) => change(key, event.target.value === "" ? "" : Number(event.target.value));
   const cancel = () => back("/studio/Experiment");
 
@@ -134,8 +149,9 @@ export function NewExperiment({ from }) {
         description,
         config: {
           ...config,
-          market_data_mode: config.market_snapshot_id ? "snapshot" : "legacy",
-          market_snapshot_id: config.market_snapshot_id || null,
+          market_data_mode: config.market_template ? "template" : "legacy",
+          market_template: config.market_template || null,
+          data_version: config.market_template ? config.data_version : null,
         },
       });
       // 用工作台替换创建页的历史记录：在工作台点“返回”不会回到已提交的表单。
@@ -186,19 +202,13 @@ export function NewExperiment({ from }) {
           {invalidDates && <ErrorCallout>结束日期不能早于起始日期。</ErrorCallout>}
         </Section>
         <Separator size="4" />
-        <Section title="市场环境" description="实验创建时固定所用快照，之后更新市场数据不影响本实验。">
-          <RunMarketSnapshot
-            value={form.market_snapshot_id}
-            onChange={(value) =>
-              // 首次加载时组件会自动选中默认快照，这不算用户修改。
-              form.market_snapshot_id === undefined
-                ? setForm((previous) => ({ ...previous, market_snapshot_id: value }))
-                : change("market_snapshot_id", value)
-            }
+        <Section title="市场环境" description="选择市场模板。创建时固定模板版本与数据版本，并把冻结的数据包拉取到实验目录，之后更新市场数据不影响本实验。">
+          <RunMarketTemplate
+            value={form.market_template}
+            onChange={pickTemplate}
             startDate={form.start_date}
             endDate={form.end_date}
-            allowMissingNews={!!form.allow_missing_news}
-            onAllowMissingNews={(value) => change("allow_missing_news", value)}
+            dataVersion={form.data_version}
             onValidity={setMarketValid}
           />
         </Section>
@@ -227,8 +237,8 @@ export function NewExperiment({ from }) {
             </Grid>
           )}
         </Section>
-        {!marketValid && form.market_snapshot_id !== undefined && (
-          <Notice>市场环境尚未通过校验，请检查快照覆盖的日期与新闻选项。</Notice>
+        {!marketValid && form.market_template !== undefined && (
+          <Notice>市场环境尚未通过校验，请检查模板的数据覆盖与提示。</Notice>
         )}
         <ErrorCallout>{error}</ErrorCallout>
         <Separator size="4" />

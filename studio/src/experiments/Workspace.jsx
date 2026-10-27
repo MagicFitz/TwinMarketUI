@@ -438,7 +438,9 @@ const CONFIG_LABELS = {
   prob_of_technical: "技术面概率",
   random_seed: "随机种子",
   market_data_mode: "市场数据模式",
-  market_snapshot_id: "市场快照",
+  market_template: "市场模板",
+  data_version: "数据版本",
+  market_snapshot_id: "市场快照（旧版）",
   allow_missing_news: "允许无新闻",
 };
 
@@ -511,7 +513,7 @@ export function Workspace({ runId, tab, agent, refresh }) {
           </Flex>
           <Text as="p" size="2" color="gray" mt="1">
             ID {run.run_id} · {run.config.start_date} → {run.config.end_date} · {n(run.config.user_count)} Agents ·{" "}
-            {run.config.market_snapshot_id || "内置历史文件"} · 创建于 {stamp(run.created_at)}
+            {run.config.market_template ? `${run.config.market_template} · 数据版本 ${run.config.data_version}` : run.config.market_snapshot_id || "内置历史文件"} · 创建于 {stamp(run.created_at)}
           </Text>
         </Box>
         <Flex gap="2" align="center">

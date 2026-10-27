@@ -56,7 +56,7 @@ def main():
             checkpoint_state_path=str(folder / 'state.json'), runtime_events_path=str(folder / 'events.jsonl'), run_id='smoke')
     assert len(calls) > 0, 'fake model was never called'
     (folder / 'observations.json').write_text(json.dumps(observed))
-    print(json.dumps({'model_calls': len(calls), 'observations': observed, 'snapshot': snapshot.name}))
+    print(json.dumps({'model_calls': len(calls), 'observations': observed, 'market_dir': snapshot.name}))
 
 
 if __name__ == '__main__':

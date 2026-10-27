@@ -25,7 +25,8 @@ from backend.results import (
     results_social,
     results_summary,
 )
-from backend.run_service import create_run, normalize_config, write_manifest
+from backend.market_bundle import MarketInputError, mds_client
+from backend.run_service import create_run, materialize_market, normalize_config, write_manifest
 from backend.runtime_service import runtime_snapshot, store_for
 from backend.services.agents import AgentService
 from backend.services.catalog import CatalogService
@@ -35,10 +36,6 @@ from backend.services.llm_context import agent_llm_context
 from backend.services.market import MarketService
 from backend.services.model_settings import ModelSettingsService
 from backend.settings import Settings, get_settings
-from backend.market_data.errors import MarketError
-from backend.market_data.snapshots import resolve_snapshot
-from backend.services.data_sources import DataSourceService
-from backend.services.market_sync import MarketSyncService
 
 
 class RunCreate(BaseModel):
@@ -79,20 +76,6 @@ class EmbeddingModelUpdate(BaseModel):
     api_key: str | None = Field(default=None, max_length=2000)
 
 
-class DataSourceUpdate(BaseModel):
-    token: str | None = Field(default=None, max_length=2000)
-    enabled: bool = True
-
-
-class MarketSyncCreate(BaseModel):
-    source_id: str = "tushare"
-    mode: str = "incremental"
-    start_date: str | None = None
-    end_date: str | None = None
-    datasets: list[str] = Field(default_factory=lambda: ["trade_cal", "daily", "daily_basic"])
-    allow_missing_news: bool = False
-
-
 def _safe_output_dir(run: dict[str, Any], settings: Settings) -> Path:
     """Return a registered run directory only when it stays below RUNS_DIR."""
     folder = Path(run["output_dir"]).resolve()
@@ -124,8 +107,6 @@ def create_app(
     agent_service = AgentService(settings)
     market_service = MarketService(settings)
     log_service = LogService(settings)
-    data_source_service = DataSourceService(settings)
-    market_sync_service = MarketSyncService(settings)
 
     app = FastAPI(title="TwinMarket Control API", version="1.0")
     app.state.settings = settings
@@ -151,7 +132,7 @@ def create_app(
     async def conflict(_, error):
         return JSONResponse(status_code=409, content={"error": str(error)})
 
-    @app.exception_handler(MarketError)
+    @app.exception_handler(MarketInputError)
     async def market_error(_, error):
         return JSONResponse(status_code=error.status, content={"code": error.code, "error": str(error)})
 
@@ -215,52 +196,6 @@ def create_app(
     def test_model(kind: Literal["language", "embedding"], body: ModelTestRequest | None = None):
         return model_settings_service.test(kind, (body or ModelTestRequest()).model_dump(exclude_none=True))
 
-    @app.get("/api/settings/data-sources")
-    def data_sources():
-        return {"items": [data_source_service.get()]}
-
-    @app.put("/api/settings/data-sources/tushare")
-    def update_data_source(body: DataSourceUpdate):
-        return data_source_service.update(body.model_dump(exclude_unset=True))
-
-    @app.post("/api/settings/data-sources/tushare/test")
-    def test_data_source():
-        return data_source_service.test()
-
-    @app.get("/api/market/overview")
-    def market_overview():
-        return market_sync_service.overview()
-
-    @app.post("/api/market/sync-jobs", status_code=202)
-    def create_sync_job(body: MarketSyncCreate):
-        return market_sync_service.create(body.model_dump())
-
-    @app.get("/api/market/sync-jobs/{job_id}")
-    def get_sync_job(job_id: str):
-        market_sync_service.jobs()
-        return market_sync_service.registry.job(job_id)
-
-    @app.post("/api/market/sync-jobs/{job_id}/cancel")
-    def cancel_sync_job(job_id: str):
-        return market_sync_service.registry.cancel(job_id)
-
-    @app.get("/api/market/snapshots")
-    def market_snapshots():
-        return {"items": market_sync_service.registry.snapshots()}
-
-    @app.get("/api/market/snapshots/{snapshot_id}")
-    def market_snapshot(snapshot_id: str):
-        metadata, _ = resolve_snapshot(settings, snapshot_id, allow_missing_news=True)
-        return metadata
-
-    @app.get("/api/market/snapshots/{snapshot_id}/market")
-    def snapshot_market(snapshot_id: str, asset: str | None = None):
-        return market_service.snapshot_market(snapshot_id, asset)
-
-    @app.post("/api/market/snapshots/{snapshot_id}/activate")
-    def activate_snapshot(snapshot_id: str):
-        return market_sync_service.activate(snapshot_id)
-
     @app.get("/api/documentation")
     def documentation(path: str | None = None):
         return documentation_service.documentation(path)
@@ -312,6 +247,7 @@ def create_app(
             if run["status"] != "draft":
                 raise ConflictError("已启动运行的配置不可原地修改；请复制为新实例")
             config = normalize_config(body.config, settings)
+            materialize_market(_safe_output_dir(run, settings), config, settings)
             write_manifest(_safe_output_dir(run, settings), config, settings)
             state_path = _safe_output_dir(run, settings) / "state.json"
             state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -331,7 +267,7 @@ def create_app(
             {
                 "name": f"{source['name']} 副本",
                 "description": source["description"],
-                "config": {"market_data_mode": "legacy", "market_snapshot_id": None, **source["config"]},
+                "config": source["config"],
             },
             settings,
         )
@@ -360,9 +296,20 @@ def create_app(
         run = registry.get(run_id)
         if run["status"] != "draft":
             raise ConflictError("仅未运行草稿允许安全删除")
-        shutil.rmtree(_safe_output_dir(run, settings))
+        folder = _safe_output_dir(run, settings)
+        try:
+            bundle_id = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))["market_environment"].get("bundle_id")
+        except (OSError, ValueError, KeyError):
+            bundle_id = None
+        shutil.rmtree(folder)
         with registry.connection() as connection:
             connection.execute("DELETE FROM runs WHERE run_id=?", (run_id,))
+        if bundle_id:
+            try:
+                # Lets the service collect bundles nobody references; never blocks the delete.
+                mds_client(settings).remove_ref(bundle_id, run_id)
+            except MarketInputError:
+                pass
 
     @app.get("/api/runs/{run_id}/runtime")
     def runtime(run_id: str):

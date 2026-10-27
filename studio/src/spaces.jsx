@@ -93,7 +93,7 @@ export function MarketSpace({ catalog, refresh }) {
               />
             </Grid>
           </Panel>
-          <MarketChart refresh={refresh} selectSnapshot />
+          <MarketChart refresh={refresh} selectSource />
         </Flex>
       )}
       {tab === "mechanisms" && (

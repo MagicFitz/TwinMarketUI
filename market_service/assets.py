@@ -12,7 +12,10 @@ ASSET_CODES = {"TLEI", "MEI", "CPEI", "IEEI", "REEI", "TSEI", "CGEI", "TTEI", "E
 
 
 def load_assets(path):
-    raw = path.read_bytes()
+    return load_assets_bytes(path.read_bytes())
+
+
+def load_assets_bytes(raw):
     document = yaml.safe_load(raw)
     assets = document.get("assets", {})
     if document.get("schema_version") != 1 or set(assets) != ASSET_CODES:

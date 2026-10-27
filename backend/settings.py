@@ -16,8 +16,10 @@ DATA_DIR_ENV = "TWINMARKET_DATA_DIR"
 RUNS_DIR_ENV = "TWINMARKET_RUNS_DIR"
 REGISTRY_PATH_ENV = "TWINMARKET_REGISTRY_PATH"
 ALLOWED_ORIGINS_ENV = "TWINMARKET_ALLOWED_ORIGINS"
+MDS_URL_ENV = "TWINMARKET_MDS_URL"
 
 DEFAULT_ALLOWED_ORIGINS = ("http://127.0.0.1:5173",)
+DEFAULT_MDS_URL = "http://127.0.0.1:8100"
 DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -47,6 +49,8 @@ class Settings:
     runs_dir: Path
     registry_path: Path
     allowed_origins: tuple[str, ...] = DEFAULT_ALLOWED_ORIGINS
+    # Market data service base URL; runs pull frozen bundles from it at creation time.
+    mds_url: str = DEFAULT_MDS_URL
 
     def __post_init__(self) -> None:
         # Direct construction is useful in tests and dependency injection.  Keep
@@ -84,6 +88,7 @@ class Settings:
             runs_dir=runs_dir.resolve(),
             registry_path=registry_path.resolve(),
             allowed_origins=_parse_origins(source.get(ALLOWED_ORIGINS_ENV)),
+            mds_url=source.get(MDS_URL_ENV, "").strip() or DEFAULT_MDS_URL,
         )
 
     # A descriptive alias is useful to callers that do not care about the
@@ -124,6 +129,7 @@ class Settings:
             RUNS_DIR_ENV: str(self.runs_dir),
             REGISTRY_PATH_ENV: str(self.registry_path),
             ALLOWED_ORIGINS_ENV: ",".join(self.allowed_origins),
+            MDS_URL_ENV: self.mds_url,
         }
 
 

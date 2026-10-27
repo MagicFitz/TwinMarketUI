@@ -6,9 +6,9 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from backend.market_data.errors import MarketError
-from backend.market_data.providers.tushare import TushareProvider
-from backend.market_data.registry import MarketRegistry, now
+from .errors import MarketError
+from .providers.tushare import TushareProvider
+from .registry import MarketRegistry, now
 
 
 class DataSourceService:

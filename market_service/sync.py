@@ -1,4 +1,8 @@
-"""Daily synchronization orchestrator shared by HTTP, CLI and detached worker."""
+"""Daily synchronization orchestrator shared by HTTP, CLI and the detached worker.
+
+A successful job writes one new warehouse ``data_version``; nothing that a
+bundle already froze is ever modified.
+"""
 from __future__ import annotations
 
 import gzip
@@ -9,19 +13,18 @@ import shutil
 import subprocess
 import sys
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from backend.market_data.assets import load_assets
-from backend.market_data.errors import Cancelled, MarketError
-from backend.market_data.indices import TRANSFORM_VERSION, build_indices
-from backend.market_data.normalize import normalize_constituents
-from backend.market_data.providers.tushare import FIELDS, TushareProvider
-from backend.market_data.registry import MarketRegistry, now
-from backend.market_data.snapshots import fingerprint, resolve_snapshot, snapshot_path
-from backend.services.data_sources import DataSourceService
+from .assets import load_assets_bytes
+from .data_sources import DataSourceService
+from .errors import Cancelled, MarketError
+from .indices import TRANSFORM_VERSION, build_indices
+from .normalize import normalize_constituents
+from .providers.tushare import FIELDS, TushareProvider
+from .registry import MarketRegistry
+from .warehouse import INDEX_COLUMNS_KEY, Warehouse
 
 
 def iso_date(value):
@@ -45,32 +48,42 @@ def latest_closed_date():
             else current.date() - timedelta(days=1)).isoformat()
 
 
+def frame(rows, columns=None):
+    result = pd.DataFrame(rows)
+    if columns:
+        result = result[[c for c in columns if c in result] + [c for c in result if c not in columns]]
+    return result
+
+
 class MarketSyncService:
     def __init__(self, settings):
         self.settings, self.registry = settings, MarketRegistry(settings)
+        self.warehouse = Warehouse(settings)
         self.source = DataSourceService(settings)
 
-    def _baseline(self):
-        snapshots = self.registry.snapshots()
-        # Revisions extend the latest produced snapshot, independently of activation.
-        if snapshots:
-            newest = max(snapshots, key=lambda item: (item["effective_through"], item["as_of"]))
-            metadata, path = resolve_snapshot(self.settings, newest["snapshot_id"], allow_missing_news=True)
-            return path, metadata
-        return self.settings.data_dir, None
+    def history(self, version=None):
+        """Index history visible at ``version`` (default: latest), as a DataFrame."""
+        version = version or self.warehouse.latest_version()
+        if version is None:
+            raise MarketError("DATA_BRIDGE_MISSING", "数据仓库为空，请先导入种子数据")
+        return frame(self.warehouse.rows("index_daily", version), self.warehouse.setting(INDEX_COLUMNS_KEY))
+
+    def assets(self, version=None):
+        version = version or self.warehouse.latest_version()
+        raw = self.warehouse.static("market_assets.yaml", version) if version else None
+        if raw is None:
+            raise MarketError("ASSET_DEFINITION_INVALID", "数据仓库缺少资产定义")
+        document, digest = load_assets_bytes(raw)
+        return document, digest
 
     def overview(self):
-        snapshots = self.registry.snapshots()
-        active = next((item for item in snapshots if item["active"]), None)
-        assets, asset_hash = load_assets(self.settings.data_path("market_assets.yaml"))
-        baseline, _ = self._baseline()
-        stock_file = baseline / "stock_data.csv"
-        dates = pd.read_csv(stock_file, usecols=["date"])["date"] if stock_file.is_file() else []
-        latest = max(dates) if len(dates) else None
-        return {"active_snapshot": active, "snapshots": snapshots, "jobs": self.jobs(),
+        version = self.warehouse.latest_version()
+        dates = sorted(self.history(version)["date"].unique()) if version else []
+        assets, asset_hash = self.assets(version) if version else (None, None)
+        return {"data_version": version, "versions": self.warehouse.versions(10), "jobs": self.jobs(),
                 "source": self.source.get(), "assets": assets, "asset_definition_sha256": asset_hash,
-                "baseline_through": latest, "latest_closed_date": latest_closed_date(),
-                "suggested_start_date": sorted(set(dates))[-3] if len(set(dates)) >= 3 else latest}
+                "baseline_through": dates[-1] if dates else None, "latest_closed_date": latest_closed_date(),
+                "suggested_start_date": dates[-3] if len(dates) >= 3 else (dates[-1] if dates else None)}
 
     def jobs(self):
         jobs = self.registry.jobs()
@@ -101,39 +114,30 @@ class MarketSyncService:
             raise MarketError("DATA_SOURCE_UNAVAILABLE", "请在 Setting 配置并启用 Tushare")
         if request.get("source_id", "tushare") != "tushare":
             raise MarketError("DATA_SOURCE_UNSUPPORTED", "目前仅支持 Tushare")
-        if not request.get("allow_missing_news", False):
-            raise MarketError("NEWS_MISSING_NOT_ALLOWED", "本期尚未接入新闻，请明确允许无新闻模式")
         mode = request.get("mode", "incremental")
         if mode not in {"incremental", "backfill"}:
             raise MarketError("INVALID_SYNC_MODE", "请选择增量更新或日期回补")
         end = iso_date(request.get("end_date") or latest_closed_date())
         if end > latest_closed_date():
             raise MarketError("MARKET_NOT_CLOSED", "仅允许同步已收盘且入库的日期")
-        baseline, metadata = self._baseline()
-        try:
-            history = pd.read_csv(baseline / "stock_data.csv")
-        except OSError:
-            raise MarketError("DATA_BRIDGE_MISSING", "缺少可桥接的本地历史行情") from None
-        dates = sorted(set(history["date"]))
+        dates = sorted(set(self.history()["date"]))
         if len(dates) < 2:
             raise MarketError("DATA_BRIDGE_MISSING", "本地历史行情为空")
-        # Re-fetch three recent trading days so revisions become a new snapshot.
+        # Re-fetch three recent trading days so supplier revisions become a new version.
         start = iso_date(request.get("start_date") if mode == "backfill" else dates[max(1, len(dates) - 3)])
         if start > end or start <= dates[0]:
             raise MarketError("INVALID_DATE_RANGE", "同步范围须有桥接历史且不能跳过未同步日期")
-        # The new snapshot keeps history before start only, so an earlier end would drop synced dates.
         if end < dates[-1]:
             raise MarketError("INVALID_DATE_RANGE", f"结束日期不能早于本地已同步日期 {dates[-1]}，否则会丢弃之后的行情")
         datasets = request.get("datasets") or ["trade_cal", "daily", "daily_basic"]
         if not {"trade_cal", "daily"}.issubset(datasets) or set(datasets) - set(FIELDS):
             raise MarketError("DATASET_UNSUPPORTED", "交易日历和日线必选；本期可选每日估值")
-        job = self.registry.create_job({"source_id": "tushare", "mode": mode, "start_date": start,
-            "end_date": end, "datasets": sorted(set(datasets)), "allow_missing_news": True,
-            "baseline_snapshot_id": metadata["snapshot_id"] if metadata else None})
+        job = self.registry.create_job({"source_id": "tushare", "mode": mode, "start_date": start, "end_date": end,
+            "datasets": sorted(set(datasets)), "baseline_version": self.warehouse.latest_version()})
         if launch:
             env = {**os.environ, **self.settings.as_environ()}
             try:
-                process = subprocess.Popen([sys.executable, "-m", "backend.market_worker", "--job-id", job["job_id"]],
+                process = subprocess.Popen([sys.executable, "-m", "market_service.worker", "--job-id", job["job_id"]],
                     cwd=self.settings.project_root, env=env, start_new_session=True,
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 # Do not overwrite terminal state if the worker finishes immediately.
@@ -145,18 +149,13 @@ class MarketSyncService:
                                                 error="无法启动同步进程")
         return self.registry.job(job["job_id"])
 
-    def activate(self, snapshot_id):
-        metadata, _ = resolve_snapshot(self.settings, snapshot_id, allow_missing_news=True)
-        self.registry.set_setting("active_snapshot_id", snapshot_id)
-        return {**metadata, "active": True}
-
     def execute(self, job_id, provider=None):
         if not self.registry.claim(job_id, os.getpid()):
             return self.registry.job(job_id)
         job = self.registry.job(job_id)
         request = job["request"]
-        stage = self.settings.data_path("market_staging", job_id)
-        published = None
+        stage = self.settings.path("staging", job_id)
+        archive = self.settings.path("raw", job_id)
 
         def check():
             if self.registry.job(job_id)["cancel_requested"]:
@@ -171,41 +170,35 @@ class MarketSyncService:
 
         try:
             stage.mkdir(parents=True, exist_ok=False)
-            (stage / "raw").mkdir()
-            (stage / "normalized").mkdir()
             provider = provider or TushareProvider(self.source.token(), check=check, on_retry=retry)
-            assets_document, asset_hash = load_assets(self.settings.data_path("market_assets.yaml"))
+            baseline_version = request["baseline_version"]
+            assets_document, asset_hash = self.assets(baseline_version)
             assets = assets_document["assets"]
             if request["start_date"] < assets_document["effective_from"]:
                 raise MarketError("ASSET_DEFINITION_INVALID", "同步日期早于资产定义生效日期")
             codes = {c["ts_code"] for asset in assets.values() for c in asset["constituents"]}
-            if request["baseline_snapshot_id"]:
-                _, baseline = resolve_snapshot(self.settings, request["baseline_snapshot_id"], allow_missing_news=True)
-            else:
-                baseline = self.settings.data_dir
-            history = pd.read_csv(baseline / "stock_data.csv")
+            history = self.history(baseline_version)
             history = history[history["date"] < request["start_date"]].copy()
             if set(history.ts_code.unique()) != set(assets):
                 raise MarketError("DATA_BRIDGE_MISSING", "桥接历史必须包含 10 个行业指数")
             bridge_date = history["date"].max()
-            if any(frame["date"].max() != bridge_date for _, frame in history.groupby("ts_code")):
+            if any(group["date"].max() != bridge_date for _, group in history.groupby("ts_code")):
                 raise MarketError("DATA_BRIDGE_MISSING", "各指数的桥接日期不一致")
             start, end = request["start_date"], request["end_date"]
             calendar_start = str(history["date"].min())
-            warnings = ["本期快照未接入新闻及新闻检索索引；无新闻模式已明确允许", "资金流未接入，新增日期写入空值"]
+            warnings = ["资金流未接入，新增日期写入空值"]
 
             def record(api, params, rows):
                 # Persist successful data only. No token, exception or supplier error text.
                 filtered = [row for row in rows if api == "trade_cal" or row.get("ts_code") in codes]
                 blob = json.dumps(filtered, ensure_ascii=False, sort_keys=True).encode()
-                digest = hashlib.sha256(blob).hexdigest()
-                with gzip.open(stage / "raw" / (api + ".jsonl.gz"), "ab") as handle:
+                with gzip.open(stage / (api + ".jsonl.gz"), "ab") as handle:
                     handle.write(blob + b"\n")
-                with (stage / "raw" / "request_manifest.jsonl").open("a", encoding="utf-8") as handle:
+                with (stage / "request_manifest.jsonl").open("a", encoding="utf-8") as handle:
                     handle.write(json.dumps({"provider": "tushare", "api_name": api, "params": params,
                         "parameters_sha256": hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest(),
                         "fields": FIELDS[api], "response_rows": len(rows), "saved_rows": len(filtered),
-                        "response_sha256": digest}) + "\n")
+                        "response_sha256": hashlib.sha256(blob).hexdigest()}) + "\n")
 
             progress("calendar", .05)
             calendar_rows = provider.fetch("trade_cal", {"exchange": "SSE", "start_date": calendar_start.replace("-", ""),
@@ -228,7 +221,7 @@ class MarketSyncService:
             if set(zip(history.ts_code, history.date)) != expected_keys or history.duplicated(["ts_code", "date"]).any():
                 raise MarketError("DATA_COVERAGE_INCOMPLETE", "桥接历史缺少交易日行情或含重复数据")
             if len(opened) < 30:
-                raise MarketError("DATA_COVERAGE_INCOMPLETE", "快照历史少于 30 个交易日，无法支持 MA30")
+                raise MarketError("DATA_COVERAGE_INCOMPLETE", "历史少于 30 个交易日，无法支持 MA30")
             trading_dates = [day for day in opened if day >= start]
             if not trading_dates:
                 raise MarketError("DATA_COVERAGE_INCOMPLETE", "同步范围内没有交易日")
@@ -262,68 +255,43 @@ class MarketSyncService:
                 raise MarketError("SNAPSHOT_VALIDATION_FAILED", "指数主键或交易日覆盖无效")
             if not (output["close"].gt(0) & output["pre_close"].gt(0)).all():
                 raise MarketError("SNAPSHOT_VALIDATION_FAILED", "指数历史存在无效价格")
-            # Only prior trading days are observed by a run; retain the full local history.
-            output.to_csv(stage / "stock_data.csv", index=False)
-            calendar.to_csv(stage / "trading_days.csv", index=False)
-            news_dates = pd.date_range(calendar_start, end).strftime("%Y-%m-%d").tolist()
-            # This MVP deliberately uses a wholly empty news environment, including retrieval.
-            pd.DataFrame({"cal_date": news_dates, "news": [[] for _ in news_dates]}).to_pickle(stage / "sorted_impact_news.pkl")
-            shutil.copyfile(self.settings.data_path("market_assets.yaml"), stage / "market_assets.yaml")
-            shutil.copyfile(baseline / "stock_profile.csv", stage / "stock_profile.csv")
-            for name, rows in (("calendar", calendar.to_dict("records")), ("custom_indices", new_rows.to_dict("records")),
-                               ("constituents", normalize_constituents([row for group in daily.values() for row in group.values()])),
-                               ("news", [{"cal_date": day, "news": []} for day in news_dates])):
-                with gzip.open(stage / "normalized" / (name + ".jsonl.gz"), "wt", encoding="utf-8") as handle:
-                    for row in rows:
-                        handle.write(json.dumps({k: (None if isinstance(v, float) and pd.isna(v) else v)
-                                                 for k, v in row.items()}, ensure_ascii=False, allow_nan=False) + "\n")
-            snapshot_id = "market-" + end.replace("-", "") + "-" + job_id.removeprefix("sync-")
-            metadata = {"schema_version": 1, "snapshot_id": snapshot_id, "provider": "tushare",
-                "as_of": now(), "start_date": calendar_start, "effective_through": opened[-1], "calendar_through": end,
-                "earliest_run_date": (date.fromisoformat(opened[29]) + timedelta(days=1)).isoformat(),
-                "status": "ready_with_warnings", "created_by_job_id": job_id, "transform_version": TRANSFORM_VERSION,
-                "asset_definition_sha256": asset_hash, "asset_definition_version": assets_document["schema_version"],
-                "source_range": {"start_date": start, "end_date": end},
-                "baseline_snapshot_id": request["baseline_snapshot_id"],
-                "datasets": {"daily": {"status": "available", "through": opened[-1]},
-                    "trade_cal": {"status": "available", "through": end},
-                    "daily_basic": {"status": "available" if optional_available and basics else "missing"},
-                    "moneyflow": {"status": "missing"}, "news": {"status": "missing", "ranking_method": "empty-v1"}},
-                "units": {"close": "CNY index point", "vol": "shares (new rows); legacy volume unknown",
-                          "amount": "CNY (new rows); legacy units unchanged", "elg_amount_net": "10000 CNY", "dv_ttm": "percent"},
-                "quality": {"errors": [], "warnings": warnings, "constituent_coverage": coverage,
-                            "minimum_weight_coverage": min(item["weight"] for item in coverage),
-                            "news_missing_days": len(news_dates), "valuation_missing_values": int(new_rows[["pe_ttm", "pb", "ps_ttm", "dv_ttm"]].isna().sum().sum())},
-                "files": {str(file.relative_to(stage)): fingerprint(file) for file in sorted(stage.rglob("*")) if file.is_file()}}
-            (stage / "snapshot.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
-            for file in stage.rglob("*"):
-                if file.is_file():
-                    file.chmod(0o444)
+            constituents = normalize_constituents([row for group in daily.values() for row in group.values()])
+            with gzip.open(stage / "constituents.jsonl.gz", "wt", encoding="utf-8") as handle:
+                for row in constituents:
+                    handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+            calendar["exchange"] = "SSE"
+            columns = self.warehouse.setting(INDEX_COLUMNS_KEY) or []
+            columns = columns + [c for c in output.columns if c not in columns]
+            summary = {"source": "tushare", "source_range": {"start_date": start, "end_date": end},
+                "effective_through": opened[-1], "calendar_through": end, "transform_version": TRANSFORM_VERSION,
+                "asset_definition_sha256": asset_hash,
+                "datasets": {"daily": "available", "trade_cal": "available",
+                             "daily_basic": "available" if optional_available and basics else "missing",
+                             "moneyflow": "missing"},
+                "warnings": warnings, "constituent_coverage_min": min(item["weight"] for item in coverage),
+                "valuation_missing_values": int(new_rows[["pe_ttm", "pb", "ps_ttm", "dv_ttm"]].isna().sum().sum())}
             progress("publishing", .95)
-            destination = snapshot_path(self.settings, snapshot_id)
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            # Cancellation and registry publication share a writer lock. No default activation.
-            with self.registry.connection() as db:
-                db.execute("BEGIN IMMEDIATE")
-                if db.execute("SELECT cancel_requested FROM sync_jobs WHERE job_id=?", (job_id,)).fetchone()[0]:
+
+            def publish_check():
+                if self.registry.job(job_id)["cancel_requested"]:
                     raise Cancelled()
-                os.rename(stage, destination)
-                published = destination
-                db.execute("INSERT INTO market_snapshots VALUES (?,?)", (snapshot_id, json.dumps(metadata)))
-                db.execute("UPDATE sync_jobs SET status='completed',stage='completed',progress=1,snapshot_id=?,pid=NULL,updated_at=? WHERE job_id=?",
-                           (snapshot_id, now(), job_id))
-            published = None
-            return self.registry.job(job_id)
+
+            version, changes = self.warehouse.write(job_id=job_id, kind="market_daily", summary=summary,
+                rows={"index_daily": new_rows.astype(object).where(new_rows.notna(), None).to_dict("records"),
+                      "calendar": calendar.astype(object).where(calendar.notna(), None).to_dict("records")},
+                settings={INDEX_COLUMNS_KEY: columns}, before_commit=publish_check)
+            archive.parent.mkdir(parents=True, exist_ok=True)
+            os.rename(stage, archive)  # Raw responses are kept for audit, next to the version they produced.
+            return self.registry.update_job(job_id, status="completed", stage="completed" if changes else "unchanged",
+                                            progress=1, data_version=version, pid=None)
         except Cancelled:
             return self.registry.update_job(job_id, status="cancelled", stage="cancelled", pid=None)
         except Exception as error:
             # Do not serialize exception objects from HTTP / pandas / subprocess layers.
             code = error.code if isinstance(error, MarketError) else "SYNC_FAILED"
-            message = str(error) if isinstance(error, MarketError) else "同步失败，旧快照已保留；可重新同步"
+            message = str(error) if isinstance(error, MarketError) else "同步失败，已有数据版本保持不变；可重新同步"
             return self.registry.update_job(job_id, status="failed", stage="failed", error_code=code, error=message, pid=None)
         finally:
-            if published is not None and not any(item["snapshot_id"] == published.name for item in self.registry.snapshots()):
-                shutil.rmtree(published, ignore_errors=True)
             # Failed or cancelled jobs must not leave partial staging data behind.
             shutil.rmtree(stage, ignore_errors=True)
 

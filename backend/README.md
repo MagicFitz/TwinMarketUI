@@ -46,6 +46,6 @@ venv/bin/python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8766
 
 该命令分别检查核心仿真、独立后端和 Studio 前端。
 
-## 日级市场快照
+## 市场数据
 
-Tushare 连接、独立同步 Worker、不可变快照和 Run 输入隔离见 [使用指南](../docs/MARKET_SNAPSHOTS_ZH.md)。本期接入交易日历、日线及可选每日估值；新闻缺失必须明确允许。运行接口测试可安装 `backend/requirements-dev.txt`。
+行情同步、Tushare 凭据、数据版本和市场模板已迁到独立的市场数据服务（`python -m market_service`，默认端口 8100），见 [设计文档](../docs/MARKET_DATA_SERVICE_DESIGN_ZH.md)。本后端不再调用 Tushare：创建模板模式的 Run 时，经 `TWINMARKET_MDS_URL` 请求覆盖检查和数据包，把数据包下载到 `runs/<run_id>/market/` 并校验指纹；之后启动和续跑都不依赖该服务。设置了 `TWINMARKET_MDS_TOKEN` 时，请求会带上该令牌。旧的快照模式 Run 仍可按其清单校验后启动，但不能再新建。运行接口测试可安装 `backend/requirements-dev.txt`。

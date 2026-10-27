@@ -7,7 +7,7 @@ from typing import Callable
 
 import requests
 
-from backend.market_data.errors import MarketError
+from market_service.errors import MarketError
 
 API_URL = "https://api.tushare.pro"
 FIELDS = {

@@ -48,12 +48,17 @@ def run_worker(run_id: str, *, resume: bool = False, settings: Settings | None =
         preflight = validate_start(run, resume, settings)
         if preflight:
             raise ValueError("; ".join(preflight))
-        metadata, market_dir = market_environment(config, settings)
+        environment, market_dir = market_environment(config, settings, folder)
         simulation_env = {**os.environ, **settings.as_environ(), "TWINMARKET_DATA_DIR": str(market_dir)}
-        simulation_env.pop("TUSHARE_TOKEN", None)
-        simulation_env.pop("TWINMARKET_MARKET_SNAPSHOT_ID", None)
-        if metadata:
-            simulation_env["TWINMARKET_MARKET_SNAPSHOT_ID"] = metadata["snapshot_id"]
+        # The simulation needs no provider or service credentials, only its frozen inputs.
+        for name in ("TUSHARE_TOKEN", "TWINMARKET_MDS_TOKEN", "TWINMARKET_MARKET_SNAPSHOT_ID",
+                     "TWINMARKET_MARKET_BUNDLE_ID", "TWINMARKET_RULES"):
+            simulation_env.pop(name, None)
+        if environment and environment["mode"] == "template":
+            simulation_env["TWINMARKET_MARKET_BUNDLE_ID"] = environment["id"]
+            simulation_env["TWINMARKET_RULES"] = str(market_dir / "rules.json")
+        elif environment:
+            simulation_env["TWINMARKET_MARKET_SNAPSHOT_ID"] = environment["id"]
         if not resume:
             observer.started(Scope.RUN, "prepare", message="正在准备独立运行目录")
             subprocess.run(
@@ -70,7 +75,7 @@ def run_worker(run_id: str, *, resume: bool = False, settings: Settings | None =
                     str(folder / f"user_{config['user_count']}.db"),
                     "--belief-output",
                     str(folder / f"belief_{config['user_count']}.csv"),
-                    *(["--market-snapshot", str(market_dir), "--start-date", config["start_date"]] if metadata else []),
+                    *(["--market-snapshot", str(market_dir), "--start-date", config["start_date"]] if environment else []),
                 ],
                 cwd=settings.project_root,
                 env=simulation_env,

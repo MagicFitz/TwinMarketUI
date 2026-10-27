@@ -1,8 +1,8 @@
-"""Detached market synchronization, independent of simulation workers."""
+"""Detached market synchronization, independent of the HTTP process."""
 import argparse
 
-from backend.services.market_sync import MarketSyncService
-from backend.settings import get_settings
+from market_service.settings import get_settings
+from market_service.sync import MarketSyncService
 
 
 def main():

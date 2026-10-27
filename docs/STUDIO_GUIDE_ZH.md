@@ -15,7 +15,7 @@ TwinMarket Studio 是本地市场模拟研究工作台。当前版本只读，�
 | --- | --- |
 | Experiment | 实验配置、运行、过程记录与结果 |
 | Agent | 可复用的 Agent Group、成员画像与策略 |
-| Market | 市场机制、资产包、行情与新闻快照、模拟环境 |
+| Market | 市场数据服务：数据版本、同步任务、市场模板、资产包 |
 | Setting | 大语言模型、向量模型与金融数据源的全局连接 |
 | Documentation | 已发布的项目文档 |
 
