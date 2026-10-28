@@ -141,7 +141,7 @@ class TemplateRunTests(RunMarketFixture):
         self.registry.transition(run["run_id"], "queued")
         self.transport = offline
         secrets = {"TUSHARE_TOKEN": SECRET, "TWINMARKET_MDS_TOKEN": "service-secret"}
-        with patch.dict(os.environ, secrets), patch("backend.worker.subprocess.run", return_value=SimpleNamespace(returncode=0)) as execute:
+        with patch.dict(os.environ, secrets), patch("backend.worker.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")) as execute:
             self.assertEqual(run_worker(run["run_id"], settings=self.settings), 0)
         prepare, simulate = execute.call_args_list
         self.assertIn("--market-snapshot", prepare.args[0])

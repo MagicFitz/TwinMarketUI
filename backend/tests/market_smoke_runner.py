@@ -1,4 +1,5 @@
 """Offline child-process smoke runner; never used by production workers."""
+import contextlib
 import json
 import os
 import re
@@ -47,8 +48,18 @@ def main():
         observed.append({'simulation_date': current.strftime('%Y-%m-%d'), 'observation_through': frame['date'].max().strftime('%Y-%m-%d')})
         return original(*args, **kwargs)
     init_db_forum(str(folder / 'forum.db'))
-    with patch.object(BaseAgent, '__init__', lambda self, *args, **kwargs: None), patch.object(BaseAgent, 'get_response', fake_model), patch.object(simulation, 'process_user_input', observe):
-        simulation.init_simulation(start_date=pd.Timestamp('2025-01-13'), end_date=pd.Timestamp('2025-01-14'),
+    patches = [patch.object(BaseAgent, '__init__', lambda self, *args, **kwargs: None), patch.object(BaseAgent, 'get_response', fake_model),
+               patch.object(simulation, 'process_user_input', observe)]
+    if os.environ.get('SMOKE_BREAK_AGENTS'):
+        # Every Agent fails while being built, as when its account is missing for the day.
+        def broken(self, *args, **kwargs):
+            raise KeyError('user_id')
+        patches.append(patch('trader.trading_agent.PersonalizedStockTrader.__init__', broken))
+    start, end = os.environ.get('SMOKE_START', '2025-01-13'), os.environ.get('SMOKE_END', '2025-01-14')
+    with contextlib.ExitStack() as stack:
+        for item in patches:
+            stack.enter_context(item)
+        simulation.init_simulation(start_date=pd.Timestamp(start), end_date=pd.Timestamp(end),
             forum_db=str(folder / 'forum.db'), user_db=str(folder / 'users.db'), debug=False,
             max_workers=1, user_graph_save_name='smoke', checkpoint=False, similarity_threshold=.2,
             time_decay_factor=.5, node=1, log_dir=str(folder), prob_of_technical=0,

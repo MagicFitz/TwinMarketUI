@@ -27,7 +27,7 @@ from backend.results import (
 )
 from backend.market_bundle import MarketInputError, mds_client
 from backend.run_service import create_run, materialize_market, normalize_config, write_manifest
-from backend.runtime_service import runtime_snapshot, store_for
+from backend.runtime_service import reclassify_completed_runs, runtime_snapshot, store_for
 from backend.services.agents import AgentService
 from backend.services.catalog import CatalogService
 from backend.services.documentation import DocumentationService
@@ -43,6 +43,11 @@ class RunCreate(BaseModel):
     description: str = Field(default="", max_length=2000)
     run_id: str | None = Field(default=None, max_length=64)
     config: dict[str, Any] = Field(default_factory=dict)
+
+
+class RetryRequest(BaseModel):
+    # auto: resume after the last committed day when possible, otherwise start over.
+    mode: Literal["auto", "resume", "restart"] = "auto"
 
 
 class LanguageModelUpdate(BaseModel):
@@ -100,6 +105,8 @@ def create_app(
     """Build an injectable app while preserving the established HTTP contract."""
     settings = settings or get_settings()
     registry = registry or RunRegistry(settings.registry_path)
+    # Runs recorded as completed before whole-day Agent failures stopped the simulation.
+    reclassify_completed_runs(registry)
     manager = manager or ProcessManager(registry, settings)
     catalog_service = CatalogService(settings)
     model_settings_service = ModelSettingsService(settings)
@@ -283,6 +290,10 @@ def create_app(
     @app.post("/api/runs/{run_id}/resume")
     def resume(run_id: str):
         return manager.start(run_id, resume=True)
+
+    @app.post("/api/runs/{run_id}/retry")
+    def retry(run_id: str, body: RetryRequest | None = None):
+        return manager.retry(run_id, (body or RetryRequest()).mode)
 
     @app.post("/api/runs/{run_id}/archive")
     def archive(run_id: str):

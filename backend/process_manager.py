@@ -13,7 +13,7 @@ from runtime import RuntimeObserver
 from runtime.schemas import Scope
 
 from .registry import ConflictError, RunRegistry
-from .run_service import validate_start
+from .run_service import archive_attempt, validate_start
 from .runtime_service import store_for
 from .settings import Settings, get_settings
 
@@ -67,6 +67,29 @@ class ProcessManager:
             pid=process.pid,
             last_heartbeat=datetime.now(timezone.utc).isoformat(),
         )
+
+    def retry(self, run_id: str, mode: str = "auto") -> dict:
+        """Run a failed or cancelled run again.
+
+        ``resume`` continues after the last committed day; ``restart`` archives the previous
+        attempt and prepares everything again (needed when its prepared inputs were wrong).
+        ``auto`` resumes when at least one day was committed and resuming is possible.
+        """
+        if mode not in {"auto", "resume", "restart"}:
+            raise ValueError("重试方式只能是 auto、resume 或 restart")
+        run = self.registry.get(run_id)
+        if run["status"] not in {"failed", "cancelled"}:
+            raise ConflictError("只有失败或已取消的实验可以重试")
+        if mode == "auto":
+            progressed = bool(run["checkpoint"].get("last_completed_date"))
+            mode = "resume" if progressed and not validate_start(run, True, self.settings) else "restart"
+        if mode == "resume":
+            return self.start(run_id, resume=True)
+        errors = validate_start({**run, "checkpoint": {}}, False, self.settings)
+        if errors:
+            raise ValueError("; ".join(errors))
+        archive_attempt(run, self.registry)
+        return self.start(run_id)
 
     def stop(self, run_id: str) -> dict:
         run = self.registry.get(run_id)

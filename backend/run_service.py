@@ -1,6 +1,7 @@
 """Run preparation, validation, and immutable input-manifest creation."""
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import shutil
@@ -128,6 +129,8 @@ def normalize_config(value: dict[str, Any], settings: Settings | None = None) ->
             config[key] = str(path.relative_to(settings.project_root))
         except ValueError:
             config[key] = str(path)
+    if config["market_data_mode"] == "legacy":
+        check_legacy_coverage(config, settings)
     if config["market_data_mode"] == "template":
         plan = mds_client(settings).plan(config["market_template"], config["start_date"], config["end_date"],
                                          config["data_version"])
@@ -140,6 +143,25 @@ def normalize_config(value: dict[str, Any], settings: Settings | None = None) ->
         # Pin the exact template version and data version that the plan checked.
         config["market_template"], config["data_version"] = plan["template"]["ref"], plan["data_version"]
     return config
+
+
+LEGACY_LOOKBACK = 30
+
+
+def check_legacy_coverage(config, settings) -> None:
+    """Refuse legacy runs the built-in files cannot support, before any Agent is prepared."""
+    path = settings.data_path("stock_data.csv")
+    if not path.is_file():
+        return  # validate_start reports the missing input.
+    with path.open(newline="", encoding="utf-8") as handle:
+        dates = sorted({row["date"] for row in csv.DictReader(handle) if row.get("date")})
+    if not dates:
+        return
+    prior = sum(1 for day in dates if day < config["start_date"])
+    if prior < LEGACY_LOOKBACK:
+        raise ValueError(f"内置历史文件在 {config['start_date']} 之前只有 {prior} 个交易日，至少需要 {LEGACY_LOOKBACK} 个")
+    if config["end_date"] > dates[-1]:
+        raise ValueError(f"内置历史文件只覆盖到 {dates[-1]}，请提前结束日期或选择市场模板")
 
 
 def materialize_market(output: Path, config, settings) -> dict[str, Any] | None:
@@ -293,3 +315,35 @@ def validate_start(
             if not path.is_file():
                 errors.append(f"续跑产物缺失: {path.name}")
     return errors
+
+
+# Inputs that belong to the run definition and survive a restart.
+KEPT_ON_RESTART = {"manifest.json", BUNDLE_DIR, "attempts"}
+
+
+def archive_attempt(run: dict[str, Any], registry: RunRegistry) -> Path:
+    """Move the previous attempt's outputs to ``attempts/`` and reset the run to its start date.
+
+    The event stream continues numbering after the archived one, so open event
+    cursors stay valid, and starts with a marker pointing at the archive.
+    """
+    from runtime import EventStore, RuntimeObserver
+    from runtime.schemas import Scope
+
+    folder, config = Path(run["output_dir"]), run["config"]
+    last_event = EventStore(folder / "events.jsonl").last_id
+    attempts = folder / "attempts"
+    attempts.mkdir(exist_ok=True)
+    target = attempts / f"attempt-{len(list(attempts.iterdir())) + 1}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    target.mkdir()
+    for entry in folder.iterdir():
+        if entry.name not in KEPT_ON_RESTART:
+            shutil.move(str(entry), str(target / entry.name))
+    checkpoint = {"last_completed_date": None, "next_date": config["start_date"]}
+    (folder / "state.json").write_text(json.dumps({"status": "draft", "checkpoint": checkpoint}, ensure_ascii=False, indent=2),
+                                       encoding="utf-8")
+    RuntimeObserver(run["run_id"], EventStore(folder / "events.jsonl", start_after=last_event)).retrying(
+        Scope.RUN, "run", message=f"从头重新运行；上一次尝试已归档到 attempts/{target.name}")
+    registry.update(run["run_id"], checkpoint_json=json.dumps(checkpoint), health="healthy", failure_reason=None,
+                    exit_code=None, pid=None)
+    return target

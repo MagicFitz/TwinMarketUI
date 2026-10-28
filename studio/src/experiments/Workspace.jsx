@@ -3,6 +3,7 @@ import {
   Badge,
   Box,
   Button,
+  Callout,
   Card,
   Flex,
   Grid,
@@ -13,13 +14,13 @@ import {
   Tabs,
   Text,
 } from "@radix-ui/themes";
-import { DotsHorizontalIcon, DownloadIcon } from "@radix-ui/react-icons";
+import { DotsHorizontalIcon, DownloadIcon, ExclamationTriangleIcon, ResetIcon } from "@radix-ui/react-icons";
 import { fetchJson, isActiveRun, n, stamp, useNow, STATUS } from "../lib.js";
 import { Definition, Empty, ErrorCallout, Panel, Stat, StatusBadge, icon } from "../ui.jsx";
 import { useRouter } from "../router.jsx";
 import { AgentExplorer, AgentProgressBar, stageName } from "../agents/AgentExplorer.jsx";
 import { MarketChart } from "../MarketChart.jsx";
-import { RunControlButton, RunMoreMenu, useRunActions } from "./run-actions.jsx";
+import { RestartDialog, RunControlButton, RunMoreMenu, useRunActions } from "./run-actions.jsx";
 
 // 工作台的 tab 与 URL 段一一对应；App 的面包屑也读取这份定义。
 export const WORKSPACE_TABS = [
@@ -444,6 +445,42 @@ const CONFIG_LABELS = {
   allow_missing_news: "允许无新闻",
 };
 
+// 失败实验的原因与重试入口：重试在已有进度时从断点继续，否则从头运行；也可强制从头重新运行。
+function FailureBanner({ run, actions }) {
+  const [restarting, setRestarting] = useState(false);
+  const done = run.checkpoint?.last_completed_date;
+  // 与后端 /retry 的 auto 规则一致：有已提交的交易日且还有剩余日期时续跑，否则从头运行。
+  const resumable = !!done && run.checkpoint?.next_date <= run.config?.end_date;
+  return (
+    <Callout.Root color="red" size="1" role="alert" my="3">
+      <Callout.Icon>{icon(ExclamationTriangleIcon)}</Callout.Icon>
+      <Flex direction="column" gap="2">
+        <Callout.Text>
+          <Text weight="medium">实验未完成：</Text>
+          {run.failure_reason || "运行失败，原因未记录。"}
+        </Callout.Text>
+        <Callout.Text>
+          {resumable
+            ? `已处理至 ${done}。“重试”会从 ${run.checkpoint.next_date} 继续；如果失败来自准备好的数据本身，请从头重新运行。`
+            : `${done ? `已处理至 ${done}，但结果不可用。` : "尚未完成任何交易日。"}“重试”会把本次输出归档到 attempts/，然后从 ${run.config?.start_date} 重新运行。`}
+        </Callout.Text>
+        <Flex gap="2" wrap="wrap">
+          <Button size="1" color="blue" loading={actions.isBusy(run, "retry")} disabled={!!actions.busy} onClick={() => actions.control(run, "retry")}>
+            {icon(ResetIcon, 12)}
+            重试
+          </Button>
+          {resumable && (
+            <Button size="1" variant="soft" color="gray" disabled={!!actions.busy} onClick={() => setRestarting(true)}>
+              从头重新运行
+            </Button>
+          )}
+        </Flex>
+      </Flex>
+      <RestartDialog run={run} actions={actions} open={restarting} onOpenChange={setRestarting} />
+    </Callout.Root>
+  );
+}
+
 function ConfigTab({ run, actions }) {
   const config = run.config || {};
   const known = Object.keys(CONFIG_LABELS).filter((key) => key in config);
@@ -526,6 +563,7 @@ export function Workspace({ runId, tab, agent, refresh }) {
         </Flex>
       </Flex>
       <ErrorCallout>{actions.error || (error ? `${error}，显示上次读取的数据` : null)}</ErrorCallout>
+      {run.status === "failed" && <FailureBanner run={run} actions={actions} />}
       <Tabs.Root value={current} onValueChange={(next) => go(next)}>
         <Tabs.List mb="4">
           {WORKSPACE_TABS.map(([id, label]) => (

@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Sequence
 
 from runtime import RuntimeObserver
-from runtime.schemas import Scope
+from runtime.outcome import first_all_failed_day
+from runtime.schemas import EventType, Scope
 
 from .registry import RunRegistry
 from .run_service import market_environment, validate_start
@@ -24,6 +25,14 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--resume", action="store_true")
     return parser.parse_args(argv)
+
+
+def _simulation_failure(run) -> str | None:
+    """The simulation's own day- or run-level failure message, newest first."""
+    for item in reversed(store_for(run).after(0, 1_000_000)):
+        if item.event == EventType.FAILED and item.scope in {Scope.DAY, Scope.RUN} and item.error_summary:
+            return item.error_summary
+    return None
 
 
 def run_worker(run_id: str, *, resume: bool = False, settings: Settings | None = None) -> int:
@@ -61,7 +70,7 @@ def run_worker(run_id: str, *, resume: bool = False, settings: Settings | None =
             simulation_env["TWINMARKET_MARKET_SNAPSHOT_ID"] = environment["id"]
         if not resume:
             observer.started(Scope.RUN, "prepare", message="正在准备独立运行目录")
-            subprocess.run(
+            prepared = subprocess.run(
                 [
                     sys.executable,
                     str(settings.project_root / "script" / "prepare_simulation_run.py"),
@@ -75,12 +84,21 @@ def run_worker(run_id: str, *, resume: bool = False, settings: Settings | None =
                     str(folder / f"user_{config['user_count']}.db"),
                     "--belief-output",
                     str(folder / f"belief_{config['user_count']}.csv"),
-                    *(["--market-snapshot", str(market_dir), "--start-date", config["start_date"]] if environment else []),
+                    *(["--market-snapshot", str(market_dir)] if environment else ["--legacy-history", str(market_dir)]),
+                    "--start-date",
+                    config["start_date"],
                 ],
                 cwd=settings.project_root,
                 env=simulation_env,
-                check=True,
+                capture_output=True,
+                text=True,
             )
+            with (folder / "simulation.log").open("a", encoding="utf-8") as handle:
+                handle.write(prepared.stdout + prepared.stderr)
+            if prepared.returncode:
+                # Surface the script's own message (e.g. too little history) instead of an exit code.
+                lines = [line for line in prepared.stderr.splitlines() if line.strip()]
+                raise RuntimeError(f"运行准备失败：{lines[-1] if lines else f'exit {prepared.returncode}'}")
             observer.completed(
                 Scope.RUN,
                 "prepare",
@@ -138,7 +156,11 @@ def run_worker(run_id: str, *, resume: bool = False, settings: Settings | None =
                 stderr=subprocess.STDOUT,
             )
         if result.returncode:
-            raise RuntimeError(f"simulation exited {result.returncode}")
+            raise RuntimeError(_simulation_failure(run) or f"simulation exited {result.returncode}")
+        # Defense in depth: never report completion for a day on which no Agent worked.
+        all_failed = first_all_failed_day(store_for(registry.get(run_id)).after(0, 1_000_000))
+        if all_failed:
+            raise RuntimeError(all_failed)
         # simulation.py has appended events using another EventStore instance;
         # reopen it so this terminal event continues the ordered sequence.
         final_run = registry.get(run_id)
@@ -176,12 +198,19 @@ def run_worker(run_id: str, *, resume: bool = False, settings: Settings | None =
             error_code=type(error).__name__,
             error_summary=str(error),
         )
+        # Days committed before the failure stay valid, so a retry can resume after them.
+        try:
+            checkpoint = json.loads((folder / "state.json").read_text(encoding="utf-8"))["checkpoint"]
+        except (OSError, ValueError, KeyError):
+            checkpoint = run["checkpoint"]
         registry.transition(
             run_id,
             "failed",
             pid=None,
             exit_code=1,
-            failure_reason=f"{type(error).__name__}: {error}",
+            health="degraded",
+            checkpoint_json=json.dumps(checkpoint),
+            failure_reason=str(error) if isinstance(error, RuntimeError) else f"{type(error).__name__}: {error}",
         )
         return 1
 

@@ -10,11 +10,12 @@ from .event import RuntimeEvent
 
 
 class EventStore:
-    def __init__(self, path: Path, buffer_size: int = 2048):
+    def __init__(self, path: Path, buffer_size: int = 2048, start_after: int = 0):
+        """``start_after`` continues numbering from an archived stream, keeping client cursors valid."""
         self.path = path
         self._lock = threading.Lock()
         self._buffer: deque[RuntimeEvent] = deque(maxlen=buffer_size)
-        self._last_id = 0
+        self._last_id = start_after
         self._load_tail()
 
     def _load_tail(self) -> None:

@@ -29,6 +29,9 @@ export function useRunActions(onChanged) {
     error,
     isBusy: (run, action) => busy === `${run.run_id}:${action}`,
     control: (run, action) => perform(run, action, () => postJson(`/api/runs/${encodeURIComponent(run.run_id)}/${action}`)),
+    // 从头重新运行：上一次尝试的输出归档到实验目录的 attempts/，事件与结果从起始日重新生成。
+    restart: (run) =>
+      perform(run, "restart", () => postJson(`/api/runs/${encodeURIComponent(run.run_id)}/retry`, { mode: "restart" })),
     archive: (run) => perform(run, "archive", () => postJson(`/api/runs/${encodeURIComponent(run.run_id)}/archive`)),
     remove: (run) =>
       perform(run, "delete", () => fetchJson(`/api/runs/${encodeURIComponent(run.run_id)}`, { method: "DELETE" })),
@@ -37,10 +40,10 @@ export function useRunActions(onChanged) {
   };
 }
 
-// 每种操作一个色调：运行 teal、续跑 blue、停止 red、结果 iris，列表里一眼可分。
+// 每种操作一个色调：运行 teal、重试/续跑 blue、停止 red、结果 iris，列表里一眼可分。
 const CONTROL_STYLE = {
   start: { icon: PlayIcon, variant: "solid", color: "teal" },
-  resume: { icon: ResetIcon, variant: "solid", color: "blue" },
+  retry: { icon: ResetIcon, variant: "solid", color: "blue" },
   stop: { icon: PauseIcon, variant: "soft", color: "red" },
 };
 
@@ -75,8 +78,33 @@ export function RunResultButton({ run, size = "2" }) {
   );
 }
 
+// 从头重新运行会归档已有输出，先确认再执行。
+export function RestartDialog({ run, actions, open, onOpenChange }) {
+  return (
+    <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
+      <AlertDialog.Content maxWidth="440px">
+        <AlertDialog.Title>从头重新运行“{run.name}”？</AlertDialog.Title>
+        <AlertDialog.Description size="2">
+          将从 {run.config?.start_date} 重新准备 Agent 与市场数据并运行。本次尝试的数据库、日志和结果会归档到实验目录的 attempts/ 中，不会删除。
+        </AlertDialog.Description>
+        <Flex gap="3" mt="4" justify="end">
+          <AlertDialog.Cancel>
+            <Button variant="soft" color="gray">
+              取消
+            </Button>
+          </AlertDialog.Cancel>
+          <AlertDialog.Action>
+            <Button onClick={() => actions.restart(run)}>从头重新运行</Button>
+          </AlertDialog.Action>
+        </Flex>
+      </AlertDialog.Content>
+    </AlertDialog.Root>
+  );
+}
+
 export function RunMoreMenu({ run, actions, children, onDeleted }) {
   const [confirming, setConfirming] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const active = isActiveRun(run.status);
   return (
     <>
@@ -84,6 +112,9 @@ export function RunMoreMenu({ run, actions, children, onDeleted }) {
         <DropdownMenu.Trigger>{children}</DropdownMenu.Trigger>
         <DropdownMenu.Content align="end">
           <DropdownMenu.Item onSelect={() => actions.duplicate(run)}>复制为新实验</DropdownMenu.Item>
+          <DropdownMenu.Item disabled={!["failed", "cancelled"].includes(run.status)} onSelect={() => setRestarting(true)}>
+            从头重新运行
+          </DropdownMenu.Item>
           <DropdownMenu.Item disabled={active} onSelect={() => actions.archive(run)}>
             归档
           </DropdownMenu.Item>
@@ -93,6 +124,7 @@ export function RunMoreMenu({ run, actions, children, onDeleted }) {
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Root>
+      <RestartDialog run={run} actions={actions} open={restarting} onOpenChange={setRestarting} />
       <AlertDialog.Root open={confirming} onOpenChange={setConfirming}>
         <AlertDialog.Content maxWidth="420px">
           <AlertDialog.Title>删除“{run.name}”？</AlertDialog.Title>

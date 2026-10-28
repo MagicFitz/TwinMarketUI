@@ -160,11 +160,12 @@ export const STATUS = {
 export const isActiveRun = (status) =>
   ["queued", "running", "stopping"].includes(status);
 
-// 运行可执行的主控制动作：草稿可启动，失败或取消可续跑，活动中可停止。
+// 运行可执行的主控制动作：草稿可启动，失败可重试，取消可续跑，活动中可停止。
+// 重试与续跑都走 /retry：已提交过交易日时从断点继续，否则归档本次输出后从头运行。
 export function runControl(status) {
   if (status === "draft") return { action: "start", label: "运行" };
-  if (["failed", "cancelled"].includes(status))
-    return { action: "resume", label: "续跑" };
+  if (status === "failed") return { action: "retry", label: "重试" };
+  if (status === "cancelled") return { action: "retry", label: "续跑" };
   if (["queued", "running"].includes(status))
     return { action: "stop", label: "停止" };
   return null;
@@ -178,11 +179,13 @@ export function runProgress(run) {
   if (!start || !end) return { ratio: 0, label: "—" };
   if (run.status === "completed") return { ratio: 1, label: `完成至 ${end}` };
   if (!done) return { ratio: 0, label: "尚未完成交易日" };
+  // 失败的实验即使走完了日期也没有可用结果，不写“完成至”。
+  const verb = run.status === "failed" ? "已处理至" : "完成至";
   const day = 86400000;
   const total = (Date.parse(end) - Date.parse(start)) / day + 1;
   const passed = (Date.parse(done) - Date.parse(start)) / day + 1;
   return {
     ratio: Math.max(0, Math.min(1, passed / total)),
-    label: `完成至 ${done}`,
+    label: `${verb} ${done}`,
   };
 }
