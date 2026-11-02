@@ -54,9 +54,9 @@ from .IndustryDict import *
 
 # 当前配置：使用配置文件管理
 DATA_DIR = Path(os.environ.get("TWINMARKET_DATA_DIR", "data"))
-if os.environ.get("TWINMARKET_MARKET_SNAPSHOT_ID"):
-    # MVP snapshots explicitly contain no news: do not read the legacy index,
-    # initialize an embedding client, or create directories in immutable inputs.
+if os.environ.get("TWINMARKET_MARKET_SNAPSHOT_ID") or os.environ.get("TWINMARKET_MARKET_BUNDLE_ID"):
+    # Snapshots and market bundles ship no retrieval index yet: do not read the legacy
+    # index, initialize an embedding client, or create directories in immutable inputs.
     from script.market_inputs import EmptyNewsIndex
     INFORMATION_DB = EmptyNewsIndex()
 else:
@@ -1023,7 +1023,8 @@ class PersonalizedStockTrader:
         if queries:
             queries = queries[:1]
         else:
-            return ""
+            # 调用方按 (检索结果, 查询词) 解包；没有查询词时也要返回二元组。
+            return "", []
 
         news_results_list = self.InformationDataBase.search_news_batch(
             start_date=current_date - pd.Timedelta(days=7),

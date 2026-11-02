@@ -32,9 +32,10 @@ Python 3.10+，Node 18+；浏览器自动化测试使用本机已安装的 Googl
 
 ## 可验证体验
 
-- Experiment：创建草稿、校验参数、启动/停止/续跑、独立运行目录与配置快照。
-- Runtime Observatory：Run/Day/Agent 三个尺度、固定 Day Cycle、六阶段 Agent Pipeline、Worker Lanes、SSE 断线补发、实时脱敏终端日志、诊断抽屉和完成后的真实结果表。
-- Agent：1,000 人基础模板、类型分布、搜索与分页、成员详情；行为金融测试仅预留流程入口。
+- 实验列表（`/studio/Experiment`）：表格/卡片两种视图、可选列（创建/更新时间、快照、Worker、种子、Run ID）、搜索与状态筛选、行内运行/停止/续跑，复制、归档与删除草稿收在“更多”菜单。
+- 新建实验（`/studio/Experiment/new`，`?from=<run_id>` 以已有实验为模板）：独立页面，带面包屑；取消返回来源页，有未保存修改时离开需确认，创建成功后以工作台替换当前历史记录。
+- 实验工作台（`/studio/runs/<run_id>/<tab>`）：运行与结果合并为一页，标签为运行进度、Agents、结果、日志与诊断、配置；已完成的实验默认打开结果。
+- Agent：智能体空间与工作台共用 Agent 浏览器（表格 + 右侧详情分栏：决策流水线、LLM 上下文、档案与持仓）；行为金融测试仅预留流程入口。
 - Market：环境预览、现有撮合机制、行业指数包、本地行情/新闻/索引库存。
 - Setting：模型名称与配置文件存在性、数据源接入规划、浏览器本地密度偏好；不自动测试模型或外部连接。
 - 舒适/紧凑保留相同信息，改变留白与行高；断连保留上次数据，错误提示与日志陈旧提示相互独立。
@@ -58,12 +59,19 @@ Python 3.10+，Node 18+；浏览器自动化测试使用本机已安装的 Googl
 ./script/check.sh
 ```
 
-浏览器检查覆盖四路由、浏览器历史/刷新、成员搜索/分页/抽屉、图表切换、轮询暂停、断连保留与恢复、1024/390 宽度无页面横向溢出、无前端写请求与 POST 拒绝。截图在 `qa/`；设计检查见 `design-qa.md`。
+浏览器检查需先用 `script/dev.sh` 启动后端与 Studio，并使用本机 Google Chrome：
+
+```sh
+npm run qa:smoke    # 断言检查
+npm run qa:capture  # 1440/1024/390 三种宽度截图
+```
+
+`qa:smoke` 覆盖实验列表（列设置持久化、表格/卡片切换、搜索与状态筛选）、新建实验（面包屑、取消返回、深链接回退、`?from=` 预填、未保存离开确认）、实验工作台（按 URL 切换 tab、Agent 详情分栏）、智能体空间复用 Agent 浏览器、行情曲线/数据切换、文档安全与撤回、断连保留与恢复、三种宽度无横向溢出与移动端底部导航，以及无前端写请求。截图写入 `qa/radix/`；`qa/` 根目录下的旧截图与 `design-qa.md` 记录的是 Animal Island 版界面。
 
 ## 组件与许可证
 
-React 19 + Vite；Animal Island UI 1.10.0 的 Button、Tag、Progress、Icon；Lucide 1.45.0；ECharts 6.1.0。壳层、表格、焦点约束抽屉自建。通过 `glyph` 统一图标接入。
+React 19 + Vite；Radix Themes 3.2.1（MIT）与 Radix Icons；ECharts 6.1.0。路由为基于 History API 的轻量实现（`src/router.jsx`）。
 
-Animal Island UI：© guokaigdg，CC BY-NC 4.0，https://github.com/guokaigdg/animal-island-ui 。本原型为非商业本地评估；商业化前需另行核对授权。本项目新增适配代码不改变任何第三方许可证。
+按钮规范：主操作 `solid`（每个区域最多一个），次操作 `soft gray`，停止/删除 `soft red`，行内操作 `ghost`；视图与筛选切换用 `SegmentedControl` 或 `Tabs`，不用主按钮表示选中态。
 
-对应产品设计：`../docs/UI_DESIGN_ANIMAL_ISLAND_ZH.md`。
+早期原型基于 Animal Island UI，对应设计稿 `../docs/UI_DESIGN_ANIMAL_ISLAND_ZH.md` 已不再是当前视觉来源。

@@ -62,6 +62,12 @@ class RunRegistry:
         item["config"] = json.loads(item.pop("config_json"))
         item["checkpoint"] = json.loads(item.pop("checkpoint_json"))
         item["archived"] = bool(item["archived"])
+        # 没有单独的 updated_at 列：取生命周期中最近一次写入的时间（均为 UTC ISO 字符串，可直接比较）。
+        item["updated_at"] = max(
+            value
+            for value in (item["created_at"], item["started_at"], item["ended_at"], item["last_heartbeat"])
+            if value
+        )
         return item
 
     def create(
@@ -147,6 +153,19 @@ class RunRegistry:
             ).rowcount != 1:
                 raise NotFoundError(run_id)
         return self.get(run_id)
+
+    def mark_completed_as_failed(self, run_id: str, reason: str) -> bool:
+        """Correct a run that was recorded as completed although its output is unusable.
+
+        Deliberately outside ``TRANSITIONS``: completed stays terminal for every normal
+        lifecycle path, and this only ever moves a completed run to failed.
+        """
+        with self.connection() as conn:
+            cursor = conn.execute(
+                "UPDATE runs SET status='failed', health='degraded', failure_reason=? WHERE run_id=? AND status='completed'",
+                (reason, run_id),
+            )
+        return cursor.rowcount == 1
 
     def transition(self, run_id: str, target: str, **fields: Any) -> dict[str, Any]:
         current = self.get(run_id)

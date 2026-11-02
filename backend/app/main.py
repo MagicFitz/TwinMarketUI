@@ -6,7 +6,7 @@ import json
 import shutil
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,8 +25,9 @@ from backend.results import (
     results_social,
     results_summary,
 )
-from backend.run_service import create_run, normalize_config, write_manifest
-from backend.runtime_service import runtime_snapshot, store_for
+from backend.market_bundle import MarketInputError, mds_client
+from backend.run_service import create_run, materialize_market, normalize_config, write_manifest
+from backend.runtime_service import reclassify_completed_runs, runtime_snapshot, store_for
 from backend.services.agents import AgentService
 from backend.services.catalog import CatalogService
 from backend.services.documentation import DocumentationService
@@ -35,10 +36,6 @@ from backend.services.llm_context import agent_llm_context
 from backend.services.market import MarketService
 from backend.services.model_settings import ModelSettingsService
 from backend.settings import Settings, get_settings
-from backend.market_data.errors import MarketError
-from backend.market_data.snapshots import resolve_snapshot
-from backend.services.data_sources import DataSourceService
-from backend.services.market_sync import MarketSyncService
 
 
 class RunCreate(BaseModel):
@@ -46,6 +43,11 @@ class RunCreate(BaseModel):
     description: str = Field(default="", max_length=2000)
     run_id: str | None = Field(default=None, max_length=64)
     config: dict[str, Any] = Field(default_factory=dict)
+
+
+class RetryRequest(BaseModel):
+    # auto: resume after the last committed day when possible, otherwise start over.
+    mode: Literal["auto", "resume", "restart"] = "auto"
 
 
 class LanguageModelUpdate(BaseModel):
@@ -58,6 +60,16 @@ class LanguageModelUpdate(BaseModel):
     api_key: str | None = Field(default=None, max_length=2000)
 
 
+class ModelTestRequest(BaseModel):
+    """Unsaved form values to test; omitted fields fall back to the saved config."""
+    provider: str | None = Field(default=None, max_length=80)
+    model_name: str | None = Field(default=None, max_length=200)
+    base_url: str | None = Field(default=None, max_length=1000)
+    endpoint: str | None = Field(default=None, max_length=1000)
+    timeout: int | float | None = Field(default=None, ge=0)
+    api_key: str | None = Field(default=None, max_length=2000)
+
+
 class EmbeddingModelUpdate(BaseModel):
     provider: str = Field(default="", max_length=80)
     model_name: str = Field(min_length=1, max_length=200)
@@ -67,20 +79,6 @@ class EmbeddingModelUpdate(BaseModel):
     max_retries: int | None = Field(default=None, ge=0)
     # Omit this field to keep the current secret. Send an empty string to clear it.
     api_key: str | None = Field(default=None, max_length=2000)
-
-
-class DataSourceUpdate(BaseModel):
-    token: str | None = Field(default=None, max_length=2000)
-    enabled: bool = True
-
-
-class MarketSyncCreate(BaseModel):
-    source_id: str = "tushare"
-    mode: str = "incremental"
-    start_date: str | None = None
-    end_date: str | None = None
-    datasets: list[str] = Field(default_factory=lambda: ["trade_cal", "daily", "daily_basic"])
-    allow_missing_news: bool = False
 
 
 def _safe_output_dir(run: dict[str, Any], settings: Settings) -> Path:
@@ -107,6 +105,8 @@ def create_app(
     """Build an injectable app while preserving the established HTTP contract."""
     settings = settings or get_settings()
     registry = registry or RunRegistry(settings.registry_path)
+    # Runs recorded as completed before whole-day Agent failures stopped the simulation.
+    reclassify_completed_runs(registry)
     manager = manager or ProcessManager(registry, settings)
     catalog_service = CatalogService(settings)
     model_settings_service = ModelSettingsService(settings)
@@ -114,8 +114,6 @@ def create_app(
     agent_service = AgentService(settings)
     market_service = MarketService(settings)
     log_service = LogService(settings)
-    data_source_service = DataSourceService(settings)
-    market_sync_service = MarketSyncService(settings)
 
     app = FastAPI(title="TwinMarket Control API", version="1.0")
     app.state.settings = settings
@@ -141,7 +139,7 @@ def create_app(
     async def conflict(_, error):
         return JSONResponse(status_code=409, content={"error": str(error)})
 
-    @app.exception_handler(MarketError)
+    @app.exception_handler(MarketInputError)
     async def market_error(_, error):
         return JSONResponse(status_code=error.status, content={"code": error.code, "error": str(error)})
 
@@ -201,47 +199,9 @@ def create_app(
             "embedding", body.model_dump(exclude_unset=True), api_key_provided="api_key" in body.model_fields_set
         )
 
-    @app.get("/api/settings/data-sources")
-    def data_sources():
-        return {"items": [data_source_service.get()]}
-
-    @app.put("/api/settings/data-sources/tushare")
-    def update_data_source(body: DataSourceUpdate):
-        return data_source_service.update(body.model_dump(exclude_unset=True))
-
-    @app.post("/api/settings/data-sources/tushare/test")
-    def test_data_source():
-        return data_source_service.test()
-
-    @app.get("/api/market/overview")
-    def market_overview():
-        return market_sync_service.overview()
-
-    @app.post("/api/market/sync-jobs", status_code=202)
-    def create_sync_job(body: MarketSyncCreate):
-        return market_sync_service.create(body.model_dump())
-
-    @app.get("/api/market/sync-jobs/{job_id}")
-    def get_sync_job(job_id: str):
-        market_sync_service.jobs()
-        return market_sync_service.registry.job(job_id)
-
-    @app.post("/api/market/sync-jobs/{job_id}/cancel")
-    def cancel_sync_job(job_id: str):
-        return market_sync_service.registry.cancel(job_id)
-
-    @app.get("/api/market/snapshots")
-    def market_snapshots():
-        return {"items": market_sync_service.registry.snapshots()}
-
-    @app.get("/api/market/snapshots/{snapshot_id}")
-    def market_snapshot(snapshot_id: str):
-        metadata, _ = resolve_snapshot(settings, snapshot_id, allow_missing_news=True)
-        return metadata
-
-    @app.post("/api/market/snapshots/{snapshot_id}/activate")
-    def activate_snapshot(snapshot_id: str):
-        return market_sync_service.activate(snapshot_id)
+    @app.post("/api/settings/models/{kind}/test")
+    def test_model(kind: Literal["language", "embedding"], body: ModelTestRequest | None = None):
+        return model_settings_service.test(kind, (body or ModelTestRequest()).model_dump(exclude_none=True))
 
     @app.get("/api/documentation")
     def documentation(path: str | None = None):
@@ -294,6 +254,7 @@ def create_app(
             if run["status"] != "draft":
                 raise ConflictError("已启动运行的配置不可原地修改；请复制为新实例")
             config = normalize_config(body.config, settings)
+            materialize_market(_safe_output_dir(run, settings), config, settings)
             write_manifest(_safe_output_dir(run, settings), config, settings)
             state_path = _safe_output_dir(run, settings) / "state.json"
             state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -313,7 +274,7 @@ def create_app(
             {
                 "name": f"{source['name']} 副本",
                 "description": source["description"],
-                "config": {"market_data_mode": "legacy", "market_snapshot_id": None, **source["config"]},
+                "config": source["config"],
             },
             settings,
         )
@@ -330,6 +291,10 @@ def create_app(
     def resume(run_id: str):
         return manager.start(run_id, resume=True)
 
+    @app.post("/api/runs/{run_id}/retry")
+    def retry(run_id: str, body: RetryRequest | None = None):
+        return manager.retry(run_id, (body or RetryRequest()).mode)
+
     @app.post("/api/runs/{run_id}/archive")
     def archive(run_id: str):
         run = registry.get(run_id)
@@ -342,9 +307,20 @@ def create_app(
         run = registry.get(run_id)
         if run["status"] != "draft":
             raise ConflictError("仅未运行草稿允许安全删除")
-        shutil.rmtree(_safe_output_dir(run, settings))
+        folder = _safe_output_dir(run, settings)
+        try:
+            bundle_id = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))["market_environment"].get("bundle_id")
+        except (OSError, ValueError, KeyError):
+            bundle_id = None
+        shutil.rmtree(folder)
         with registry.connection() as connection:
             connection.execute("DELETE FROM runs WHERE run_id=?", (run_id,))
+        if bundle_id:
+            try:
+                # Lets the service collect bundles nobody references; never blocks the delete.
+                mds_client(settings).remove_ref(bundle_id, run_id)
+            except MarketInputError:
+                pass
 
     @app.get("/api/runs/{run_id}/runtime")
     def runtime(run_id: str):

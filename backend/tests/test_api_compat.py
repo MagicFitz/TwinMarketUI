@@ -74,6 +74,20 @@ class ApiCompatibilityTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_names_may_repeat_and_ids_are_time_based(self):
+        body = {"name": "实验 1", "config": {"user_count": 1, "config_path": "config/api_example.yaml"}}
+        first = self.client.post("/api/runs", json=body)
+        second = self.client.post("/api/runs", json=body)
+        self.assertEqual((first.status_code, second.status_code), (201, 201))
+        self.assertEqual(first.json()["name"], second.json()["name"])
+        self.assertNotEqual(first.json()["run_id"], second.json()["run_id"])
+        for run in (first.json(), second.json()):
+            self.assertRegex(run["run_id"], r"^\d{8}-\d{6}-[0-9a-f]{4}$")
+            self.assertTrue((self.settings.runs_dir / run["run_id"]).is_dir())
+        explicit = {**body, "run_id": "fixed-id"}
+        self.assertEqual(self.client.post("/api/runs", json=explicit).status_code, 201)
+        self.assertEqual(self.client.post("/api/runs", json=explicit).status_code, 409)
+
     def test_control_routes_keep_statuses_and_runtime_response_shape(self):
         response = self.client.post(
             "/api/runs",

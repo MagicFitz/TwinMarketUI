@@ -1,0 +1,38 @@
+# 新实验的默认市场模板：现有 50 只成分股合成的 10 个行业指数，收盘后一次集合撮合。
+schema_version: 1
+template_id: cn-a-industry10
+version: 1
+name: A 股 10 行业指数 · 日频
+description: 10 个自定义行业指数，按交易日历开市，每日开盘前广播截止时刻之前的新闻。
+
+universe:
+  asset_definition: market_assets.yaml
+  instruments: industry_indices
+
+data:
+  calendar: {exchange: SSE}
+  bars: {dataset: index_daily}
+  valuation: {required: false}
+  history: {lookback_trading_days: 30}
+  news:
+    enabled: true
+    # legacy 为旧版 sorted_impact_news.pkl 导入的新闻；Tushare 来源在接入后自动纳入。
+    sources: [legacy, tushare.news, tushare.major_news, tushare.cctv_news]
+    include_synthetic: false
+    broadcast: {ranking: legacy-v1, top_k: 20}
+    retrieval: {enabled: false, window_days: 7, top_k: 2}
+    min_daily_articles: 1
+    on_gap: warn
+
+session:
+  timezone: Asia/Shanghai
+  trading_days: calendar
+  information_cutoff: "09:00"
+  matching: daily_call_auction
+  non_trading_day: {forum: true, trading: false}
+
+rules:
+  price_limit_pct: 10
+  lot_size: 100
+  fees: {commission_bps: 0, stamp_duty_bps: 0}
+  missing_constituent: zero_return

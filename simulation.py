@@ -37,6 +37,7 @@ import trader.trading_agent as TradingAgent
 from Agent import BaseAgent
 from trader.matching_engine import test_matching_system, update_profiles_table_holiday
 from trader.utility import init_system
+from runtime.outcome import ALL_AGENTS_FAILED, AllAgentsFailed, all_failed_message
 from script.run_contract import atomic_json_write, clear_date_scoped_artifacts
 from util.UserDB import (
     get_all_user_ids,
@@ -622,8 +623,17 @@ def init_simulation(
             results.append((outcome_user, decision_result))
             post_args_list.append((outcome_user, post_response_args))
 
+        # Failed Agents return {"error": ...}; inactive Agents return normally.
+        failed_agents = [(uid, args) for uid, args in forum_args_list if isinstance(args, dict) and "error" in args]
         observer.completed(Scope.DAY, "agents", simulation_date=date_string,
-                           output_summary={"processed": len(results), "failed": sum(result is None for _, result in results)}, message="Agent 处理阶段完成")
+                           output_summary={"processed": len(results), "failed": len(failed_agents)}, message="Agent 处理阶段完成")
+        if forum_args_list and len(failed_agents) == len(forum_args_list):
+            # A day without a single working Agent produces no decisions; stop before writing
+            # its checkpoint so a retry resumes from this day instead of reporting completion.
+            message = "运行已停止：" + all_failed_message(date_string, len(failed_agents), failed_agents[0][1].get("error"))
+            observer.failed(Scope.DAY, "agents", simulation_date=date_string, message=message,
+                            error_code=ALL_AGENTS_FAILED, error_summary=message)
+            raise AllAgentsFailed(message)
 
         # ============================ 结果文件保存 ============================
         # 保存交易决策结果

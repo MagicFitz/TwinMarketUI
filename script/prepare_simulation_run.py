@@ -21,6 +21,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--belief-output", required=True)
     parser.add_argument("--market-snapshot")
     parser.add_argument("--start-date")
+    # Built-in data directory for legacy-mode runs; used only when the start date needs realignment.
+    parser.add_argument("--legacy-history")
     return parser.parse_args()
 
 
@@ -33,7 +35,8 @@ def read_beliefs(path: Path) -> tuple[list[str], dict[str, dict[str, str]]]:
         return list(reader.fieldnames), rows
 
 
-def prepare_database(template: Path, output: Path, user_count: int, *, market_snapshot: Path | None = None, start_date: str | None = None) -> list[str]:
+def prepare_database(template: Path, output: Path, user_count: int, *, market_snapshot: Path | None = None,
+                     start_date: str | None = None, legacy_history: Path | None = None) -> list[str]:
     if output.exists():
         raise FileExistsError(f"拒绝覆盖已有数据库: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -75,6 +78,11 @@ def prepare_database(template: Path, output: Path, user_count: int, *, market_sn
         )
         if market_snapshot is not None:
             inject_market_history(connection, market_snapshot, start_date)
+            seed_snapshot_accounts(connection, start_date)
+        elif legacy_history is not None and needs_alignment(connection, start_date):
+            # The template's accounts and history end on one fixed day. A legacy run that starts
+            # later would find no account for the day before it starts and every Agent would fail.
+            inject_market_history(connection, legacy_history, start_date)
             seed_snapshot_accounts(connection, start_date)
         connection.commit()
         connection.execute("VACUUM")
@@ -132,6 +140,13 @@ def inject_market_history(connection, snapshot, start_date):
     connection.executemany("INSERT INTO StockData (" + ",".join(STOCK_COLUMNS) + ") VALUES (" +
                            ",".join("?" for _ in STOCK_COLUMNS) + ")",
                            [tuple(value(row, column) for column in STOCK_COLUMNS) for row in rows])
+
+
+def needs_alignment(connection, start_date):
+    """True unless the template's accounts are already dated the day before ``start_date``."""
+    previous = (date.fromisoformat(str(start_date)) - timedelta(days=1)).isoformat()
+    dates = {str(row[0])[:10] for row in connection.execute("SELECT DISTINCT created_at FROM Profiles")}
+    return dates != {previous}
 
 
 def seed_snapshot_accounts(connection, start_date):
@@ -197,10 +212,11 @@ def main() -> int:
     if not belief_source.is_file():
         raise FileNotFoundError(f"belief 源文件不存在: {belief_source}")
 
-    if args.market_snapshot and not args.start_date:
-        raise ValueError("--market-snapshot 必须同时提供 --start-date")
+    if (args.market_snapshot or args.legacy_history) and not args.start_date:
+        raise ValueError("--market-snapshot 或 --legacy-history 必须同时提供 --start-date")
     selected_user_ids = prepare_database(template, user_db, args.user_count,
-        market_snapshot=Path(args.market_snapshot) if args.market_snapshot else None, start_date=args.start_date)
+        market_snapshot=Path(args.market_snapshot) if args.market_snapshot else None, start_date=args.start_date,
+        legacy_history=Path(args.legacy_history) if args.legacy_history else None)
     write_beliefs(belief_source, belief_output, selected_user_ids)
     print(
         f"已准备 {len(selected_user_ids)} 个用户: "

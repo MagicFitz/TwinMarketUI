@@ -1,13 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Card, Checkbox, Drawer, Input, Select, Switch, Tag } from 'animal-island-ui';
-import './market-data.css';
+import { Badge, Box, Button, Card, Checkbox, Code, Dialog, Flex, Heading, Progress, Select, Switch, Table, Text, TextField } from '@radix-ui/themes';
+import { Definition, ErrorCallout, Notice, Panel } from './ui.jsx';
+
+// 市场数据服务（MDS）是独立进程，开发时经 Vite 的 /mds 代理访问。
+export const MDS = '/mds/v1';
+const OFFLINE = '市场数据服务未连接。请用 script/dev.sh 启动，或运行 python -m market_service。';
 
 export async function marketRequest(path, body, method = 'POST') {
-  const response = await fetch(path, body === undefined ? { method } : {
-    method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || '市场数据请求失败');
+  let response;
+  try {
+    response = await fetch(path, body === undefined ? { method } : {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+  } catch { throw new Error(OFFLINE); }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || (response.status >= 500 ? OFFLINE : '市场数据请求失败'));
   return data;
 }
 
@@ -21,10 +28,10 @@ function useMarketResource(path, interval = 0) {
       pending = true;
       try {
         const response = await fetch(path, { signal: controller.signal });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || '市场数据读取失败');
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || (response.status >= 500 ? OFFLINE : '市场数据读取失败'));
         if (alive) { setData(result); setError(''); }
-      } catch (reason) { if (alive && reason.name !== 'AbortError') setError(reason.message); }
+      } catch (reason) { if (alive && reason.name !== 'AbortError') setError(reason.message === 'Failed to fetch' ? OFFLINE : reason.message); }
       finally { pending = false; }
     }
     read();
@@ -36,60 +43,96 @@ function useMarketResource(path, interval = 0) {
 
 const statusText = {
   unconfigured: '未配置', untested: '尚未测试', available: '可用', partial: '部分权限', failed: '失败',
-  permission_denied: '无权限', rate_limited: '限流', missing: '缺失', ready: '可用', ready_with_warnings: '可用 · 有警告',
+  permission_denied: '无权限', rate_limited: '限流', missing: '缺失',
   queued: '排队中', running: '同步中', completed: '已完成', cancelled: '已取消',
+  ok: '满足', warn: '提示', block: '不满足', disabled: '未启用',
 };
 const phases = { queued: '排队', calendar: '交易日历', fetching: '拉取行情', aggregating: '聚合指数', validating: '质量校验',
-  publishing: '发布快照', completed: '发布完成', failed: '失败', cancelled: '已取消', rate_limit_wait: '限流等待', retry_wait: '重试等待' };
+  publishing: '写入数据版本', completed: '已生成新版本', unchanged: '数据无变化', failed: '失败', cancelled: '已取消',
+  rate_limit_wait: '限流等待', retry_wait: '重试等待' };
 const datasets = { daily: '日线行情', trade_cal: '交易日历', daily_basic: '每日估值', moneyflow: '资金流', news: '新闻' };
+const kinds = { seed: '种子导入', market_daily: '行情同步' };
 const stamp = value => value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : '尚未测试';
-const Status = ({ value }) => <Tag size="small" variant="soft" color={['failed', 'permission_denied', 'missing'].includes(value) ? 'orange' : 'green'}>{statusText[value] || value}</Tag>;
+const LEGACY = '__legacy__';
+const Status = ({ value }) => {
+  const color = ['failed', 'permission_denied', 'missing', 'warn'].includes(value) ? 'amber' : value === 'block' ? 'red'
+    : ['untested', 'unconfigured', 'queued', 'cancelled', 'disabled'].includes(value) ? 'gray' : 'green';
+  return <Badge color={color} variant="soft" radius="full">{statusText[value] || value}</Badge>;
+};
+
+function Capabilities({ entries }) {
+  return <Flex gap="2" wrap="wrap" my="3">{entries.map(([key, value, note]) =>
+    <Card key={key} size="1" className="capability"><Flex align="center" gap="2"><Text size="2">{datasets[key] || key}</Text><Status value={value} /></Flex>{note && <Text as="p" size="1" color="gray" mt="1">{note}</Text>}</Card>)}</Flex>;
+}
 
 export function TushareConnection() {
-  const resource = useMarketResource('/api/settings/data-sources');
-  const source = resource.data?.items?.[0];
+  const resource = useMarketResource(`${MDS}/sources/tushare`);
+  const source = resource.data;
   const [token, setToken] = useState(''), [busy, setBusy] = useState(''), [message, setMessage] = useState(''), [error, setError] = useState('');
   async function act(kind, body) {
     setBusy(kind); setError(''); setMessage('');
     try {
-      if (kind === 'test') await marketRequest('/api/settings/data-sources/tushare/test');
-      else await marketRequest('/api/settings/data-sources/tushare', body, 'PUT');
+      if (kind === 'test') await marketRequest(`${MDS}/sources/tushare/test`);
+      else await marketRequest(`${MDS}/sources/tushare`, body, 'PUT');
       setToken(''); resource.refresh();
       setMessage(kind === 'test' ? '权限测试已完成，请查看各接口状态。' : '数据源设置已保存。');
     } catch (reason) { setError(reason.message); }
     finally { setBusy(''); }
   }
-  return <div className="market-data">
-    <div className="market-data-heading"><div><h3>Tushare Pro</h3><p>收盘后日级数据 · 固定官方服务地址</p></div><Status value={source?.status || 'unconfigured'} /></div>
-    {source && <div className="market-data-heading"><span>{source.token_configured ? `Token 已配置 · ${source.credential_source === 'environment' ? '环境变量优先' : '本地保密配置'}` : '尚未配置 Token'}</span><Switch checked={source.enabled} disabled={!!busy} onChange={enabled => act('save', { enabled })} checkedChildren="启用" unCheckedChildren="停用" /></div>}
+  return <Flex direction="column" gap="3">
+    <Flex justify="between" align="center" gap="3" wrap="wrap">
+      <Box><Heading as="h3" size="2">Tushare Pro</Heading><Text size="1" color="gray">由市场数据服务保管 · 固定官方服务地址</Text></Box>
+      <Status value={source?.status || 'unconfigured'} />
+    </Flex>
+    {source && <Flex justify="between" align="center" gap="3"><Text size="2" color="gray">{source.token_configured ? `Token 已配置 · ${source.credential_source === 'environment' ? '环境变量优先' : '本地保密配置'}` : '尚未配置 Token'}</Text>
+      <Text as="label" size="2"><Flex gap="2" align="center"><Switch checked={source.enabled} disabled={!!busy} onCheckedChange={enabled => act('save', { enabled })} />{source.enabled ? '已启用' : '已停用'}</Flex></Text></Flex>}
     <form onSubmit={event => { event.preventDefault(); act('save', token.trim() ? { token } : {}); }}>
-      <label className="market-field"><span>新增或替换 Token</span><Input type="password" autoComplete="new-password" value={token} onChange={event => setToken(event.target.value)} placeholder="留空保留现有 Token" disabled={!!busy || !source} /></label>
-      <div className="market-data-actions"><Button htmlType="submit" type="primary" disabled={!!busy || !source} loading={busy === 'save'}>保存连接</Button><Button onClick={() => act('test')} disabled={!!busy || !source?.token_configured || !source?.enabled} loading={busy === 'test'}>测试连接</Button><Button type="text" disabled={!!busy || !source?.token_configured || source?.credential_source === 'environment'} onClick={() => act('clear', { token: '' })}>清除本地 Token</Button></div>
+      <Flex asChild direction="column" gap="1"><label><Text size="2" weight="medium">新增或替换 Token</Text>
+        <TextField.Root type="password" autoComplete="new-password" value={token} onChange={event => setToken(event.target.value)} placeholder="留空保留现有 Token" disabled={!!busy || !source} /></label></Flex>
+      <Flex gap="2" wrap="wrap" mt="3">
+        <Button type="submit" disabled={!!busy || !source} loading={busy === 'save'}>保存连接</Button>
+        <Button type="button" variant="soft" color="gray" onClick={() => act('test')} disabled={!!busy || !source?.token_configured || !source?.enabled} loading={busy === 'test'}>测试连接</Button>
+        <Button type="button" variant="ghost" color="red" disabled={!!busy || !source?.token_configured || source?.credential_source === 'environment'} onClick={() => act('clear', { token: '' })}>清除本地 Token</Button>
+      </Flex>
     </form>
-    <div className="market-capabilities">{Object.entries(datasets).filter(([key]) => ['daily', 'trade_cal', 'daily_basic'].includes(key)).map(([key, name]) => <div key={key}><span>{name}</span><Status value={source?.capabilities?.[key]?.status || 'untested'} /><small>{source?.capabilities?.[key]?.message}</small></div>)}</div>
-    <p className="market-muted">最近测试：{stamp(source?.last_tested_at)}。新闻、资金流和盘中预览将在后续接入。</p>
-    {(error || resource.error) && <p className="runtime-error" role="alert">{error || resource.error}</p>}
-    {message && <p role="status">{message}</p>}
-  </div>;
+    <Capabilities entries={Object.keys(datasets).filter(key => ['daily', 'trade_cal', 'daily_basic'].includes(key)).map(key => [key, source?.capabilities?.[key]?.status || 'untested', source?.capabilities?.[key]?.message])} />
+    <Text size="1" color="gray">最近测试：{stamp(source?.last_tested_at)}。新闻、资金流和盘中预览将在后续接入。</Text>
+    <ErrorCallout>{error || resource.error}</ErrorCallout>
+    {message && <Text size="2" color="green" role="status">{message}</Text>}
+  </Flex>;
 }
 
-function SnapshotDetails({ snapshot }) {
-  return <div className="market-data">
-    <dl className="market-facts"><div><dt>快照</dt><dd>{snapshot.snapshot_id}</dd></div><div><dt>覆盖日期</dt><dd>{snapshot.start_date} 至 {snapshot.effective_through}</dd></div><div><dt>转换规则</dt><dd>{snapshot.transform_version}</dd></div><div><dt>最小有效成分权重</dt><dd>{(snapshot.quality.minimum_weight_coverage * 100).toFixed(2)}%</dd></div><div><dt>估值空值</dt><dd>{snapshot.quality.valuation_missing_values}</dd></div></dl>
-    <h3>数据能力</h3><div className="market-capabilities">{Object.entries(snapshot.datasets).map(([key, value]) => <div key={key}><span>{datasets[key] || key}</span><Status value={value.status} /></div>)}</div>
-    <h3>质量报告</h3><ul className="market-warning-list">{snapshot.quality.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
-    <h3>资产定义 SHA-256</h3><p className="market-fingerprint">{snapshot.asset_definition_sha256}</p>
-    <h3>文件指纹</h3><div className="market-file-list">{Object.entries(snapshot.files).map(([name, file]) => <article key={name}><strong>{name}</strong><small>{file.bytes.toLocaleString()} bytes</small><p className="market-fingerprint">{file.sha256}</p></article>)}</div>
-  </div>;
+function VersionDetails({ version }) {
+  const summary = version.summary || {};
+  const changes = Object.entries(summary.changes || {}).map(([table, value]) => `${table}：新增 ${value.inserted}，修订 ${value.revised}`);
+  return <Flex direction="column" gap="4">
+    <Definition values={[['数据版本', version.data_version], ['类型', kinds[version.kind] || version.kind], ['创建时间', stamp(version.created_at)],
+      ['行情有效至', summary.effective_through || '—'], ['来源', summary.source || '—'], ['同步任务', version.job_id || '—']]} />
+    {summary.datasets && <Box><Heading as="h3" size="2">数据能力</Heading><Capabilities entries={Object.entries(summary.datasets)} /></Box>}
+    <Box><Heading as="h3" size="2">变更</Heading><ul className="plain-list">{changes.map(item => <li key={item}><Text size="2">{item}</Text></li>)}</ul></Box>
+    <Box><Heading as="h3" size="2">质量提示</Heading>{summary.warnings?.length ? <ul className="plain-list">{summary.warnings.map((warning, index) => <li key={index}><Text size="2">{warning}</Text></li>)}</ul> : <Text size="2" color="gray">无</Text>}</Box>
+    {summary.asset_definition_sha256 && <Box><Heading as="h3" size="2" mb="1">资产定义 SHA-256</Heading><Code size="1" className="break">{summary.asset_definition_sha256}</Code></Box>}
+  </Flex>;
+}
+
+function TemplateDetails({ template }) {
+  const { session, rules, news } = template;
+  return <Flex direction="column" gap="4">
+    <Text size="2" color="gray">{template.description}</Text>
+    <Definition values={[['模板版本', template.ref], ['信息截止时刻', `${session.information_cutoff}（${session.timezone}）`], ['撮合方式', session.matching],
+      ['涨跌停', `±${rules.price_limit_pct}%`], ['最小交易单位', `${rules.lot_size} 股`], ['非交易日', session.non_trading_day.forum ? '仅论坛活动' : '不活动'],
+      ['新闻', news.enabled ? `${news.sources.join('、')} · 每日 ${news.top_k ?? '全部'} 条` : '未启用']]} />
+    <Box><Heading as="h3" size="2" mb="1">模板 SHA-256</Heading><Code size="1" className="break">{template.sha256}</Code></Box>
+    <Box><Heading as="h3" size="2" mb="1">完整定义</Heading><pre className="code-block">{JSON.stringify(template.body, null, 2)}</pre></Box>
+  </Flex>;
 }
 
 export function MarketWorkbench() {
-  const resource = useMarketResource('/api/market/overview', 3000);
+  const resource = useMarketResource(`${MDS}/overview`, 3000);
   const data = resource.data;
   const [open, setOpen] = useState(false), [detail, setDetail] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [form, setForm] = useState({ mode: 'incremental', start_date: '', end_date: '', daily_basic: true, allow_missing_news: false });
+  const [form, setForm] = useState({ mode: 'incremental', start_date: '', end_date: '', daily_basic: true });
   const change = (key, value) => setForm(previous => ({ ...previous, [key]: value }));
-  const active = data?.active_snapshot;
   const ongoing = data?.jobs.some(job => ['queued', 'running'].includes(job.status));
   function showSync() {
     setError('');
@@ -99,62 +142,135 @@ export function MarketWorkbench() {
   async function sync(event) {
     event.preventDefault(); setBusy(true); setError('');
     try {
-      await marketRequest('/api/market/sync-jobs', { ...form, datasets: ['trade_cal', 'daily', ...(form.daily_basic ? ['daily_basic'] : [])] });
+      const { daily_basic, ...request } = form;
+      await marketRequest(`${MDS}/jobs`, { ...request, datasets: ['trade_cal', 'daily', ...(daily_basic ? ['daily_basic'] : [])] });
       setOpen(false); resource.refresh();
     } catch (reason) { setError(reason.message); }
     finally { setBusy(false); }
   }
-  async function act(path) {
+  async function act(path, body, method) {
     setBusy(true); setError('');
-    try { await marketRequest(path); resource.refresh(); }
+    try { await marketRequest(path, body, method); resource.refresh(); }
     catch (reason) { setError(reason.message); }
     finally { setBusy(false); }
   }
-  if (!data) return <Card className="panel"><p role={resource.error ? 'alert' : 'status'}>{resource.error || '正在读取市场数据工作台…'}</p><Button onClick={resource.refresh}>刷新</Button></Card>;
-  return <div className="market-data">
-    <Card className="panel"><div className="market-data-heading"><div><h2>市场数据工作台</h2><p>收盘后日级快照 · 本地可复现市场环境</p></div><Button type="primary" disabled={busy || ongoing || !data.source.token_configured || !data.source.enabled} onClick={showSync}>更新数据</Button></div>
-      {!data.source.token_configured && <p className="market-notice">请先前往 <a href="/studio/Setting#sources">Setting 配置 Tushare 连接</a>。</p>}
-      <dl className="market-facts"><div><dt>新实验默认快照</dt><dd>{active?.snapshot_id || '内置历史文件'}</dd></div><div><dt>有效截至</dt><dd>{active?.effective_through || data.baseline_through || '未知'}</dd></div><div><dt>质量状态</dt><dd>{active ? <Status value={active.status} /> : '尚未发布快照'}</dd></div><div><dt>本地行情已同步至</dt><dd>{data.baseline_through}</dd></div></dl>
-      {active && <div className="market-capabilities">{Object.entries(active.datasets).map(([key, value]) => <div key={key}><span>{datasets[key] || key}</span><Status value={value.status} /></div>)}</div>}
-      <p className="market-muted">同步完成后手动设为默认。已有实验继续使用创建时固定的快照。</p>
-    </Card>
-    {(error || resource.error) && <p className="runtime-error" role="alert">{error || resource.error}</p>}
-    <Card className="panel"><div className="market-data-heading"><h2>同步任务</h2><Button size="small" onClick={resource.refresh}>刷新</Button></div>
-      {data.jobs.length ? <div className="market-jobs">{data.jobs.map(job => <article key={job.job_id}><div className="market-data-heading"><div><strong>{phases[job.stage] || job.stage}</strong><p>{job.request.start_date} 至 {job.request.end_date}</p></div><Status value={job.status} /></div><progress aria-label={`${job.job_id} 同步进度`} value={job.progress} max="1" /><div className="market-data-heading"><small>{Math.round(job.progress * 100)}% · {stamp(job.created_at)}</small>{['queued', 'running'].includes(job.status) && <Button size="small" disabled={busy || job.cancel_requested} onClick={() => act(`/api/market/sync-jobs/${job.job_id}/cancel`)}>{job.cancel_requested ? '等待安全取消' : '取消任务'}</Button>}</div>{job.error && <p role="alert">{job.error} · {job.error_code}</p>}{job.snapshot_id && <small>{job.snapshot_id}</small>}</article>)}</div> : <p className="market-muted">暂无同步任务。任务状态保存在本地，刷新页面后可以继续查看。</p>}
-    </Card>
-    <Card className="panel"><h2>不可变环境快照</h2><div className="table-wrap"><table><thead><tr><th>快照</th><th>覆盖范围</th><th>状态</th><th>操作</th></tr></thead><tbody>{data.snapshots.map(snapshot => <tr key={snapshot.snapshot_id}><td><strong>{snapshot.snapshot_id}</strong><p>{snapshot.active ? '新实验默认' : snapshot.transform_version}</p></td><td>{snapshot.start_date}<br />{snapshot.effective_through}</td><td><Status value={snapshot.status} /></td><td><div className="market-data-actions"><Button size="small" onClick={() => setDetail(snapshot)}>质量与指纹</Button><Button size="small" disabled={busy || snapshot.active} onClick={() => act(`/api/market/snapshots/${snapshot.snapshot_id}/activate`)}>{snapshot.active ? '当前默认' : '设为新实验默认'}</Button></div></td></tr>)}</tbody></table></div>{!data.snapshots.length && <p className="market-muted">首次同步后将在这里展示快照及质量报告。</p>}</Card>
-    <Card className="panel"><h2>资产成分与权重</h2><p className="market-muted">保留 10 个自定义指数。旧描述中的百分比舍入误差已按比例归一，并记录在资产定义中。</p><div className="market-assets">{Object.entries(data.assets.assets).map(([code, asset]) => <details key={code}><summary>{code} · {asset.name} · {asset.constituents.length} 只成分股</summary><div className="table-wrap"><table><thead><tr><th>成分股</th><th>代码</th><th>权重</th></tr></thead><tbody>{asset.constituents.map(c => <tr key={c.ts_code}><td>{c.name}</td><td>{c.ts_code}</td><td>{(c.weight * 100).toFixed(2)}%</td></tr>)}</tbody></table></div></details>)}</div></Card>
-    <Drawer open={open} title="同步收盘后行情" onClose={() => !busy && setOpen(false)} pushBackground={false} width="min(560px,100vw)"><form className="market-sync-form market-data" onSubmit={sync}>
-      <label className="market-field"><span>同步方式</span><Select value={form.mode} onChange={value => change('mode', value)} options={[{ key: 'incremental', label: '增量更新 · 重拉最近 3 个交易日' }, { key: 'backfill', label: '指定日期回补' }]} /></label>
-      {form.mode === 'backfill' && <label className="market-field"><span>起始日期</span><Input type="date" required value={form.start_date} max={form.end_date} onChange={event => change('start_date', event.target.value)} /></label>}
-      <label className="market-field"><span>结束日期</span><Input type="date" required value={form.end_date} max={data.latest_closed_date} onChange={event => change('end_date', event.target.value)} /></label>
-      <p>交易日历、50 只成分股日线必选；每个交易日拉取全市场截面，再生成 10 个自定义指数。</p>
-      <Checkbox value={form.daily_basic ? ['daily_basic'] : []} onChange={values => change('daily_basic', values.includes('daily_basic'))} options={[{ value: 'daily_basic', label: '每日估值 · 无权限时保留空值' }]} />
-      <p className="market-notice">本期未接入新闻和资金流。新闻容器为空，新闻检索停用；这项研究限制会写入 Run 清单。</p>
-      <Checkbox value={form.allow_missing_news ? ['allow'] : []} onChange={values => change('allow_missing_news', values.includes('allow'))} options={[{ value: 'allow', label: '明确允许无新闻模式' }]} />
-      <p className="market-muted">增量起始参考：{data.suggested_start_date}。调用量约为区间交易日数 × {form.daily_basic ? '2' : '1'} 个行情接口，另加交易日历；分页和重试会增加调用量。</p>
-      {error && <p className="runtime-error" role="alert">{error}</p>}<Button htmlType="submit" type="primary" loading={busy} disabled={busy || !form.allow_missing_news}>创建同步任务</Button>
-    </form></Drawer>
-    <Drawer open={!!detail} title="快照质量与文件指纹" onClose={() => setDetail(null)} width="min(640px,100vw)" pushBackground={false}>{detail && <SnapshotDetails snapshot={detail} />}</Drawer>
-  </div>;
+  if (!data) return <Panel title="市场数据服务"><Flex justify="between" align="center"><Text size="2" color="gray" role={resource.error ? 'alert' : 'status'}>{resource.error || '正在读取市场数据服务…'}</Text><Button variant="soft" color="gray" onClick={resource.refresh}>刷新</Button></Flex></Panel>;
+  const news = Object.entries(data.datasets.news || {});
+  return <Flex direction="column" gap="4">
+    <Panel title="市场数据服务" hint="独立于仿真后端，负责同步与预处理。每次成功写入生成一个数据版本；实验创建时按模板拉取冻结的数据包，之后更新数据不影响已有实验。"
+      actions={<Button disabled={busy || ongoing || !data.source.token_configured || !data.source.enabled} onClick={showSync}>更新数据</Button>}>
+      {!data.source.token_configured && <Notice>请先前往 <a href="/studio/Setting#sources">设置 · 金融数据源</a> 配置 Tushare 连接。</Notice>}
+      <Definition values={[['最新数据版本', data.data_version ?? '—'], ['行情已同步至', data.baseline_through || '—'], ['交易日历至', data.datasets.calendar?.through || '—'], ['最近可同步收盘日', data.latest_closed_date]]} />
+      <Flex gap="2" wrap="wrap" my="3">
+        <Card size="1" className="capability"><Text size="2">指数日线</Text><Text as="p" size="1" color="gray" mt="1">{data.datasets.index_daily?.from} → {data.datasets.index_daily?.through} · {data.datasets.index_daily?.rows?.toLocaleString()} 行</Text></Card>
+        {news.length ? news.map(([source, item]) => <Card key={source} size="1" className="capability"><Text size="2">新闻 · {source}</Text><Text as="p" size="1" color="gray" mt="1">{item.from} → {item.through} · {item.rows.toLocaleString()} 条</Text></Card>)
+          : <Card size="1" className="capability"><Flex align="center" gap="2"><Text size="2">新闻</Text><Status value="missing" /></Flex></Card>}
+      </Flex>
+    </Panel>
+    <ErrorCallout>{error || resource.error}</ErrorCallout>
+    <Panel title="市场模板" hint="模板包含数据清单与开闭市、交易规则。新建实验时选择模板；发布后的模板版本不可修改。">
+      <Table.Root size="1"><Table.Header><Table.Row><Table.ColumnHeaderCell>模板</Table.ColumnHeaderCell><Table.ColumnHeaderCell>新闻</Table.ColumnHeaderCell><Table.ColumnHeaderCell>规则</Table.ColumnHeaderCell><Table.ColumnHeaderCell justify="end">操作</Table.ColumnHeaderCell></Table.Row></Table.Header>
+        <Table.Body>{data.templates.map(template => <Table.Row key={template.template_id} align="center">
+          <Table.RowHeaderCell><Text weight="medium">{template.name}</Text><Text as="p" size="1" color="gray">{template.default ? '新实验默认 · ' : ''}{template.ref}</Text></Table.RowHeaderCell>
+          <Table.Cell>{template.news.enabled ? `${template.news.sources.length} 个来源 · 每日 ${template.news.top_k ?? '全部'} 条` : '未启用'}</Table.Cell>
+          <Table.Cell>截止 {template.session.information_cutoff} · 涨跌停 ±{template.rules.price_limit_pct}%</Table.Cell>
+          <Table.Cell justify="end"><Flex gap="2" justify="end"><Button size="1" variant="ghost" color="gray" onClick={() => setDetail({ template })}>查看定义</Button>
+            <Button size="1" variant="soft" color="gray" disabled={busy || template.default} onClick={() => act(`${MDS}/templates/default`, { template_id: template.template_id }, 'PUT')}>{template.default ? '当前默认' : '设为默认'}</Button></Flex></Table.Cell>
+        </Table.Row>)}</Table.Body></Table.Root>
+    </Panel>
+    <Panel title="同步任务" actions={<Button variant="soft" color="gray" size="1" onClick={resource.refresh}>刷新</Button>}>
+      {data.jobs.length ? <Flex direction="column" gap="3">{data.jobs.map(job => <Card key={job.job_id} size="1">
+        <Flex justify="between" align="center" gap="3"><Box><Text size="2" weight="medium">{phases[job.stage] || job.stage}</Text><Text as="p" size="1" color="gray">{job.request.start_date} 至 {job.request.end_date}</Text></Box><Status value={job.status} /></Flex>
+        <Progress my="2" value={job.progress * 100} aria-label={`${job.job_id} 同步进度`} />
+        <Flex justify="between" align="center" gap="3"><Text size="1" color="gray">{Math.round(job.progress * 100)}% · {stamp(job.created_at)}</Text>
+          {['queued', 'running'].includes(job.status) && <Button size="1" variant="soft" color="red" disabled={busy || job.cancel_requested} onClick={() => act(`${MDS}/jobs/${job.job_id}/cancel`)}>{job.cancel_requested ? '等待安全取消' : '取消任务'}</Button>}</Flex>
+        {job.error && <Text as="p" size="1" color="red" role="alert">{job.error} · {job.error_code}</Text>}
+        {job.data_version && <Text size="1" color="gray">数据版本 {job.data_version}</Text>}
+      </Card>)}</Flex> : <Text size="2" color="gray">暂无同步任务。任务状态保存在市场数据服务中，刷新页面后可以继续查看。</Text>}
+    </Panel>
+    <Panel title="数据版本" hint="只增不改：供应商修订会产生新版本，旧版本仍可原样读取，已创建的实验固定使用创建时的版本。">
+      <Table.Root size="1"><Table.Header><Table.Row><Table.ColumnHeaderCell>版本</Table.ColumnHeaderCell><Table.ColumnHeaderCell>类型</Table.ColumnHeaderCell><Table.ColumnHeaderCell>行情有效至</Table.ColumnHeaderCell><Table.ColumnHeaderCell>提示</Table.ColumnHeaderCell><Table.ColumnHeaderCell justify="end">操作</Table.ColumnHeaderCell></Table.Row></Table.Header>
+        <Table.Body>{data.versions.map(version => <Table.Row key={version.data_version} align="center">
+          <Table.RowHeaderCell><Text weight="medium">v{version.data_version}</Text><Text as="p" size="1" color="gray">{stamp(version.created_at)}</Text></Table.RowHeaderCell>
+          <Table.Cell>{kinds[version.kind] || version.kind}</Table.Cell>
+          <Table.Cell>{version.summary.effective_through || '—'}</Table.Cell>
+          <Table.Cell>{version.summary.warnings?.length ? <Status value="warn" /> : <Status value="ok" />}</Table.Cell>
+          <Table.Cell justify="end"><Button size="1" variant="ghost" color="gray" onClick={() => setDetail({ version })}>详情</Button></Table.Cell>
+        </Table.Row>)}</Table.Body></Table.Root>
+    </Panel>
+    <Panel title="资产成分与权重" hint="保留 10 个自定义指数。旧描述中的百分比舍入误差已按比例归一，并记录在资产定义中。">
+      <Flex direction="column" gap="2">{Object.entries(data.assets.assets).map(([code, asset]) => <details key={code} className="disclosure"><summary><Text size="2" weight="medium">{code} · {asset.name}</Text> <Text size="1" color="gray">{asset.constituents.length} 只成分股</Text></summary>
+        <Table.Root size="1" mt="2"><Table.Header><Table.Row><Table.ColumnHeaderCell>成分股</Table.ColumnHeaderCell><Table.ColumnHeaderCell>代码</Table.ColumnHeaderCell><Table.ColumnHeaderCell justify="end">权重</Table.ColumnHeaderCell></Table.Row></Table.Header>
+          <Table.Body>{asset.constituents.map(c => <Table.Row key={c.ts_code}><Table.Cell>{c.name}</Table.Cell><Table.Cell>{c.ts_code}</Table.Cell><Table.Cell justify="end" className="tabular">{(c.weight * 100).toFixed(2)}%</Table.Cell></Table.Row>)}</Table.Body></Table.Root></details>)}</Flex>
+    </Panel>
+    <Dialog.Root open={open} onOpenChange={value => !busy && setOpen(value)}>
+      <Dialog.Content maxWidth="560px">
+        <Dialog.Title>同步收盘后行情</Dialog.Title>
+        <Dialog.Description size="2" color="gray" mb="4">交易日历、50 只成分股日线必选；每个交易日拉取全市场截面，再生成 10 个自定义指数，成功后写入一个新的数据版本。</Dialog.Description>
+        <form onSubmit={sync}><Flex direction="column" gap="3">
+          <Flex asChild direction="column" gap="1"><label><Text size="2" weight="medium">同步方式</Text><Select.Root value={form.mode} onValueChange={value => change('mode', value)}><Select.Trigger /><Select.Content><Select.Item value="incremental">增量更新 · 重拉最近 3 个交易日</Select.Item><Select.Item value="backfill">指定日期回补</Select.Item></Select.Content></Select.Root></label></Flex>
+          {form.mode === 'backfill' && <Flex asChild direction="column" gap="1"><label><Text size="2" weight="medium">起始日期</Text><TextField.Root type="date" required value={form.start_date} max={form.end_date} onChange={event => change('start_date', event.target.value)} /></label></Flex>}
+          <Flex asChild direction="column" gap="1"><label><Text size="2" weight="medium">结束日期</Text><TextField.Root type="date" required value={form.end_date} min={data.baseline_through || undefined} max={data.latest_closed_date} onChange={event => change('end_date', event.target.value)} /></label></Flex>
+          <Text as="label" size="2"><Flex gap="2" align="center"><Checkbox checked={form.daily_basic} onCheckedChange={value => change('daily_basic', value === true)} />每日估值 · 无权限时保留空值</Flex></Text>
+          <Text size="1" color="gray">增量起始参考：{data.suggested_start_date}。调用量约为区间交易日数 × {form.daily_basic ? '2' : '1'} 个行情接口，另加交易日历；分页和重试会增加调用量。</Text>
+          <ErrorCallout>{error}</ErrorCallout>
+          <Flex gap="3" justify="end" mt="2"><Dialog.Close><Button type="button" variant="soft" color="gray" disabled={busy}>取消</Button></Dialog.Close><Button type="submit" loading={busy} disabled={busy}>创建同步任务</Button></Flex>
+        </Flex></form>
+      </Dialog.Content>
+    </Dialog.Root>
+    <Dialog.Root open={!!detail} onOpenChange={value => !value && setDetail(null)}>
+      <Dialog.Content maxWidth="640px"><Dialog.Title>{detail?.template ? detail.template.name : '数据版本详情'}</Dialog.Title>
+        {detail?.version && <VersionDetails version={detail.version} />}
+        {detail?.template && <TemplateDetails template={detail.template} />}
+        <Flex justify="end" mt="4"><Dialog.Close><Button variant="soft" color="gray">关闭</Button></Dialog.Close></Flex></Dialog.Content>
+    </Dialog.Root>
+  </Flex>;
 }
 
-export function RunMarketSnapshot({ value, onChange, startDate, endDate, allowMissingNews, onAllowMissingNews, onValidity }) {
-  const resource = useMarketResource('/api/market/snapshots');
-  const snapshots = resource.data?.items || [];
-  const selected = snapshots.find(item => item.snapshot_id === value);
+// 选择市场模板并实时检查所选日期的数据是否满足模板要求。value 为模板 ID（创建时固定最新版本）
+// 或复制实验时带来的 "id@版本"；空字符串表示内置历史文件。
+export function RunMarketTemplate({ value, onChange, startDate, endDate, dataVersion, onValidity }) {
+  const resource = useMarketResource(`${MDS}/templates`);
+  const templates = resource.data?.items || [];
+  const [plan, setPlan] = useState(null), [planError, setPlanError] = useState(''), [acknowledged, setAcknowledged] = useState(false);
   useEffect(() => {
     if (value !== undefined || !resource.data) return;
-    onChange(snapshots.find(item => item.active)?.snapshot_id || '');
+    onChange(resource.data.default || '');
   }, [resource.data, value, onChange]);
-  const rangeValid = !value || !!selected && startDate >= selected.earliest_run_date && endDate <= selected.effective_through;
-  const newsValid = !selected || selected.datasets.news.status !== 'missing' || allowMissingNews;
-  const valid = !!resource.data && value !== undefined && rangeValid && newsValid;
+  // 服务离线时退回内置历史文件，避免表单无法提交。
+  useEffect(() => { if (value === undefined && resource.error) onChange(''); }, [resource.error, value, onChange]);
+  useEffect(() => {
+    setPlan(null); setPlanError(''); setAcknowledged(false);
+    if (!value || !startDate || !endDate || startDate > endDate) return;
+    const timer = setTimeout(() => marketRequest(`${MDS}/plans`, { template: value, start_date: startDate, end_date: endDate, data_version: dataVersion ?? null })
+      .then(setPlan, reason => setPlanError(reason.message)), 300);
+    return () => clearTimeout(timer);
+  }, [value, startDate, endDate, dataVersion]);
+  const warnings = plan?.checks.filter(item => item.status === 'warn') || [];
+  const valid = value === '' || (!!plan && plan.ok && (!warnings.length || acknowledged));
   useEffect(() => { onValidity(valid); }, [valid, onValidity]);
-  return <section className="market-data run-market-snapshot">
-    <label className="market-field"><span>市场环境快照</span><Select value={value || ''} onChange={onChange} disabled={!resource.data} options={[{ key: '', label: '内置历史文件 · 旧版数据模式' }, ...snapshots.map(item => ({ key: item.snapshot_id, label: `${item.active ? '默认 · ' : ''}${item.snapshot_id}` }))]} /></label>
-    {resource.error && <p className="runtime-error" role="alert">{resource.error}<Button size="small" onClick={resource.refresh}>重试</Button></p>}
-    {selected && <><p>行情有效截至 {selected.effective_through} · {selected.transform_version} · 资产定义 v{selected.asset_definition_version}</p><div className="market-capabilities">{Object.entries(selected.datasets).map(([key, data]) => <div key={key}><span>{datasets[key] || key}</span><Status value={data.status} /></div>)}</div><p className="market-notice">行情已更新，新闻缺失。无新闻环境不会使用旧新闻索引。</p><Checkbox value={allowMissingNews ? ['allow'] : []} onChange={values => onAllowMissingNews(values.includes('allow'))} options={[{ value: 'allow', label: '允许此实验使用无新闻环境' }]} /></>}
-    {!rangeValid && <p className="runtime-error" role="alert">快照未覆盖所选日期。<a href="/studio/Market">前往 Market 更新数据</a>，或调整模拟日期。</p>}
-  </section>;
+  const ids = templates.map(item => item.template_id);
+  const selected = templates.find(item => item.template_id === value?.split('@')[0]);
+  return <Flex direction="column" gap="3">
+    <Flex asChild direction="column" gap="1"><label><Text size="2" weight="medium">市场模板</Text>
+      {/* Radix Select 不接受空字符串，旧版数据模式用占位值表示。 */}
+      <Select.Root value={value === undefined ? undefined : value || LEGACY} onValueChange={next => onChange(next === LEGACY ? '' : next)} disabled={value === undefined}>
+        <Select.Trigger placeholder="读取模板…" />
+        <Select.Content>
+          {templates.map(item => <Select.Item key={item.template_id} value={item.template_id}>{item.default ? '默认 · ' : ''}{item.name}（{item.ref}）</Select.Item>)}
+          {value && !ids.includes(value) && <Select.Item value={value}>{value} · 源实验固定的版本</Select.Item>}
+          <Select.Item value={LEGACY}>内置历史文件 · 旧版数据模式</Select.Item>
+        </Select.Content>
+      </Select.Root></label></Flex>
+    {resource.error && <ErrorCallout>{resource.error} <Button size="1" variant="soft" color="gray" onClick={resource.refresh}>重试</Button></ErrorCallout>}
+    {selected && <Text size="1" color="gray">{selected.description} 信息截止 {selected.session.information_cutoff} · 涨跌停 ±{selected.rules.price_limit_pct}% · 新闻{selected.news.enabled ? `每日 ${selected.news.top_k ?? '全部'} 条` : '关闭'}{dataVersion ? ` · 固定数据版本 v${dataVersion}` : ''}</Text>}
+    {value && !plan && !planError && <Text size="1" color="gray" role="status">正在检查数据覆盖…</Text>}
+    {planError && <ErrorCallout>{planError}</ErrorCallout>}
+    {plan && <Card size="1"><Flex direction="column" gap="2">
+      <Text size="1" color="gray">数据版本 v{plan.data_version} · {plan.template.ref}</Text>
+      {plan.checks.map(item => <Flex key={item.item} gap="2" align="start"><Box flexShrink="0"><Status value={item.status} /></Box><Text size="2"><Text weight="medium">{item.label}</Text>：{item.message}</Text></Flex>)}
+      {!plan.ok && <Text size="1" color="red">数据不满足模板要求。<a href="/studio/Market">前往市场更新数据</a>，或调整模拟日期。</Text>}
+      {plan.ok && warnings.length > 0 && <Text as="label" size="2"><Flex gap="2" align="center"><Checkbox checked={acknowledged} onCheckedChange={next => setAcknowledged(next === true)} />我已知悉以上提示，仍使用此环境</Flex></Text>}
+    </Flex></Card>}
+  </Flex>;
 }

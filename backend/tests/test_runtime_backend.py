@@ -52,6 +52,14 @@ class RegistryTests(unittest.TestCase):
             with self.assertRaises(ConflictError):
                 registry.transition("r1", "completed")
 
+    def test_updated_at_tracks_latest_lifecycle_write(self):
+        with tempfile.TemporaryDirectory() as folder:
+            registry = RunRegistry(Path(folder) / "runs.sqlite3")
+            record = registry.create("r1", "name", "", {"start_date": "2023-06-15"}, Path(folder) / "r1")
+            self.assertEqual(record["updated_at"], record["created_at"])
+            beat = "2999-01-01T00:00:00+00:00"
+            self.assertEqual(registry.update("r1", last_heartbeat=beat)["updated_at"], beat)
+
 
 if __name__ == "__main__":
     unittest.main()

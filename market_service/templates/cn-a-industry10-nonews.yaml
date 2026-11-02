@@ -1,0 +1,37 @@
+# 对照模板：行情与规则同 cn-a-industry10，新闻关闭。
+schema_version: 1
+template_id: cn-a-industry10-nonews
+version: 1
+name: A 股 10 行业指数 · 无新闻对照
+description: 与默认模板相同的行情与规则，但不提供任何新闻，用于对照实验。
+
+universe:
+  asset_definition: market_assets.yaml
+  instruments: industry_indices
+
+data:
+  calendar: {exchange: SSE}
+  bars: {dataset: index_daily}
+  valuation: {required: false}
+  history: {lookback_trading_days: 30}
+  news:
+    enabled: false
+    sources: []
+    include_synthetic: false
+    broadcast: {ranking: legacy-v1, top_k: 20}
+    retrieval: {enabled: false, window_days: 7, top_k: 2}
+    min_daily_articles: 1
+    on_gap: warn
+
+session:
+  timezone: Asia/Shanghai
+  trading_days: calendar
+  information_cutoff: "09:00"
+  matching: daily_call_auction
+  non_trading_day: {forum: true, trading: false}
+
+rules:
+  price_limit_pct: 10
+  lot_size: 100
+  fees: {commission_bps: 0, stamp_duty_bps: 0}
+  missing_constituent: zero_return
