@@ -73,7 +73,3 @@ data/market_staging/
 data/market_snapshots/
 # Market data service home: warehouse, raw responses and bundles (licensed data).
 mds_data/
-
-# Frontend source helpers must not be hidden by the Python lib/ rule.
-!frontend/src/lib/
-!frontend/src/lib/**

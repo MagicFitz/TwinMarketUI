@@ -376,7 +376,7 @@ P0 已经实现，代码在 `market_service/`（服务）、`backend/market_bund
 | 新闻检索索引 | 打包 FAISS 索引，固定嵌入模型 | 推迟到 P1；模板的 `retrieval.enabled` 必须为 false，Agent 检索返回空，并作为警告写入 Run 清单 |
 | 模板规则 | 包含 `settlement: T+1` | 去掉 settlement：现有撮合每天只有一次集合竞价，没有可配置的结算规则。仿真端只接受 ±10% 涨跌停、100 股一手、`daily_call_auction`、零费率，其他取值返回 `RULE_UNSUPPORTED` |
 | `legacy-2023` 模板 | 内置 | 没有内置。旧版数据模式（`market_data_mode=legacy`）保留，用于精确复现论文实验；旧新闻已经作为 `legacy` 来源导入仓库，`cn-a-industry10` 模板会用到它 |
-| 旧接口 | 迁移期 307 跳转 | 直接删除 `/api/market/*` 和 `/api/settings/data-sources*`：Studio 已改用 `/mds/v1`，跨源 307 对浏览器代理没有意义。旧的 `frontend/` 应用还在调用这些路径，需要另行迁移 |
+| 旧接口 | 迁移期 307 跳转 | 直接删除 `/api/market/*` 和 `/api/settings/data-sources*`：Studio 已改用 `/mds/v1`，跨源 307 对浏览器代理没有意义。旧的顶层 `frontend/` 应用曾调用这些路径，已于 2026-11-03 删除 |
 | 旧快照 Run | — | 按 Run 清单中的文件指纹校验后，可以继续启动和续跑；不能新建，复制时会被拒绝 |
 | 调度器、新闻采集、新闻页 | P1 | 未实现；`GET /v1/news` 浏览接口已经提供 |
 

@@ -41,6 +41,3 @@ if rg -n --glob '*.py' --glob '!backend/tests/**' '(^|[[:space:]])(from|import)[
     exit 1
 fi
 "$PYTHON" -m unittest discover -s backend/tests -t . -v
-
-printf '\n== New frontend ==\n'
-(cd frontend && npm run test && npm run build)
