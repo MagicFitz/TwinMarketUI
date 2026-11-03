@@ -4,10 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from backend.services.agents import AgentService
-from backend.services.logs import clean_log, config_from_log, read_logs
-from backend.services.read_only import ReadOnlyStore, UnknownRunError, WorkspacePathError
-from backend.settings import Settings
+from server.services.agents import AgentService
+from server.services.logs import clean_log, config_from_log, read_logs
+from server.services.read_only import ReadOnlyStore, UnknownRunError, WorkspacePathError
+from server.settings import Settings
 
 
 def settings_for(root: Path, *, data_dir: Path | None = None) -> Settings:
@@ -19,7 +19,7 @@ def settings_for(root: Path, *, data_dir: Path | None = None) -> Settings:
         project_root=root.resolve(),
         data_dir=data,
         runs_dir=runs,
-        registry_path=(root / "backend" / "data" / "runs.sqlite3").resolve(),
+        registry_path=(root / "server" / "data" / "runs.sqlite3").resolve(),
     )
 
 

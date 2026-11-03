@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import requests
 import yaml
 
-from backend.settings import Settings
+from server.settings import Settings
 
 
 ModelKind = Literal["language", "embedding"]

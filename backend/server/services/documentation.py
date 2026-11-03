@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from backend.settings import Settings
+from server.settings import Settings
 
 from .read_only import ReadOnlyStore
 
@@ -23,7 +23,7 @@ class FrontmatterLoader(yaml.SafeLoader):
 
 
 class DocumentationService:
-    """Read only explicitly published Markdown files under ``project_root/docs``."""
+    """Read only explicitly published Markdown files under ``settings.docs_dir``."""
 
     def __init__(self, settings: Settings, store: ReadOnlyStore | None = None):
         self.settings = settings
@@ -32,7 +32,7 @@ class DocumentationService:
 
     @property
     def docs_root(self) -> Path:
-        return self.store.local(self.project_root / "docs")
+        return self.store.local(self.settings.docs_dir)
 
     def published_documents(self) -> list[dict[str, Any]]:
         root = self.docs_root

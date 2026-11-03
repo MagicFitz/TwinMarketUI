@@ -18,7 +18,7 @@ HOST="${HOST:-127.0.0.1}"
 MDS_PORT="${MDS_PORT:-8100}"
 BACKEND_PORT="${BACKEND_PORT:-8766}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
-PYTHON="${PYTHON:-venv/bin/python}"
+PYTHON="${PYTHON:-.venv/bin/python}"
 BACKEND_READY_TIMEOUT="${BACKEND_READY_TIMEOUT:-30}"
 
 fail() { echo "[dev] $*" >&2; exit 1; }
@@ -29,15 +29,15 @@ port_in_use() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
 prefix() { awk -v tag="$1" '{ print tag " " $0; fflush() }'; }
 
 # ---------------------------------------------------------------- 预检查
-[[ -x "$PYTHON" ]] || fail "找不到 Python 解释器 $PYTHON；请先创建 venv 并安装 requirements.txt"
-"$PYTHON" -c "import uvicorn, fastapi" 2>/dev/null || fail "$PYTHON 中缺少 uvicorn/fastapi；请执行 $PYTHON -m pip install -r backend/requirements.txt"
+[[ -x "$PYTHON" ]] || fail "找不到 Python 解释器 $PYTHON；请先在 backend/ 下创建 .venv 并安装 requirements.txt"
+"$PYTHON" -c "import uvicorn, fastapi" 2>/dev/null || fail "$PYTHON 中缺少 uvicorn/fastapi；请执行 $PYTHON -m pip install -r server/requirements.txt"
 command -v npm >/dev/null || fail "找不到 npm；请先安装 Node.js"
 port_in_use "$MDS_PORT" && fail "端口 $MDS_PORT 已被占用（市场数据服务）；可用 MDS_PORT=... 指定其他端口"
 port_in_use "$BACKEND_PORT" && fail "端口 $BACKEND_PORT 已被占用（后端）；可用 BACKEND_PORT=... 指定其他端口"
 port_in_use "$FRONTEND_PORT" && fail "端口 $FRONTEND_PORT 已被占用（前端）；可用 FRONTEND_PORT=... 指定其他端口"
-if [[ ! -d studio/node_modules ]]; then
+if [[ ! -d ../frontend/node_modules ]]; then
   echo "[dev] 首次运行，安装 Studio 依赖…"
-  (cd studio && npm install)
+  (cd ../frontend && npm install)
 fi
 
 # ---------------------------------------------------------------- 进程管理
@@ -82,7 +82,7 @@ disown "$MDS_PID"
 # ---------------------------------------------------------------- 启动后端
 echo "[dev] 启动后端 http://$HOST:$BACKEND_PORT"
 TWINMARKET_MDS_URL="http://$HOST:$MDS_PORT" \
-  "$PYTHON" -m uvicorn backend.app.main:app --host "$HOST" --port "$BACKEND_PORT" \
+  "$PYTHON" -m uvicorn server.app.main:app --host "$HOST" --port "$BACKEND_PORT" \
   > >(prefix "[backend]") 2>&1 &
 BACKEND_PID=$!
 disown "$BACKEND_PID"  # 不进入作业表，停止时 bash 不再打印 "Terminated"
@@ -108,7 +108,7 @@ echo "[dev] 市场数据服务已就绪"
 
 # ---------------------------------------------------------------- 启动前端
 echo "[dev] 启动 Studio 前端 http://$HOST:$FRONTEND_PORT/studio/"
-(cd studio && TWINMARKET_API_URL="http://$HOST:$BACKEND_PORT" TWINMARKET_MDS_URL="http://$HOST:$MDS_PORT" \
+(cd ../frontend && TWINMARKET_API_URL="http://$HOST:$BACKEND_PORT" TWINMARKET_MDS_URL="http://$HOST:$MDS_PORT" \
   exec npx vite --host "$HOST" --port "$FRONTEND_PORT" --strictPort) \
   > >(prefix "[studio] ") 2>&1 &
 FRONTEND_PID=$!

@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from backend.settings import (
+from server.settings import (
     ALLOWED_ORIGINS_ENV,
     DATA_DIR_ENV,
     PROJECT_ROOT_ENV,
@@ -10,7 +10,7 @@ from backend.settings import (
     RUNS_DIR_ENV,
     Settings,
 )
-from backend.run_service import normalize_config
+from server.run_service import normalize_config
 
 
 class SettingsTests(unittest.TestCase):

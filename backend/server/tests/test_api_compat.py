@@ -6,10 +6,10 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.app.main import create_app
-from backend.process_manager import ProcessManager
-from backend.registry import RunRegistry
-from backend.settings import Settings
+from server.app.main import create_app
+from server.process_manager import ProcessManager
+from server.registry import RunRegistry
+from server.settings import Settings
 
 
 def create_fixture_settings(root: Path) -> Settings:
@@ -58,7 +58,7 @@ def create_fixture_settings(root: Path) -> Settings:
         project_root=root.resolve(),
         data_dir=data_dir.resolve(),
         runs_dir=runs_dir.resolve(),
-        registry_path=(root / "backend" / "data" / "runs.sqlite3").resolve(),
+        registry_path=(root / "server" / "data" / "runs.sqlite3").resolve(),
         allowed_origins=("https://frontend.example.test",),
     )
 
@@ -102,7 +102,7 @@ class ApiCompatibilityTests(unittest.TestCase):
         manifest = json.loads((self.settings.runs_dir / "api-test" / "manifest.json").read_text())
         self.assertIn("code_version", manifest)
         self.assertIn("market_trading_days", manifest["inputs"])
-        self.assertEqual(manifest["command_summary"], "backend.worker -> simulation.py (arguments stored in Registry config)")
+        self.assertEqual(manifest["command_summary"], "server.worker -> simulation.py (arguments stored in Registry config)")
 
         runtime = self.client.get("/api/runs/api-test/runtime")
         self.assertEqual(runtime.status_code, 200)

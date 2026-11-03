@@ -1,5 +1,11 @@
-# The detached Worker starts the repository's simulation, so include its runtime
-# dependencies as well as the standalone FastAPI control plane.
--r ../requirements.txt
-fastapi>=0.115,<1
-uvicorn[standard]>=0.30,<1
+aiofiles
+aiosqlite
+matplotlib
+networkx
+numpy
+openai>=1.0.0
+pandas
+pyyaml
+requests
+tqdm
+faiss-cpu

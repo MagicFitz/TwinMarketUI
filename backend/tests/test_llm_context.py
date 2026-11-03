@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
-from backend.services.llm_context import agent_llm_context
+from server.services.llm_context import agent_llm_context
 from runtime.agent_run import AgentRun
 from tests.test_agent import completion, make_agent
 

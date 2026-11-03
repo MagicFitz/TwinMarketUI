@@ -7,10 +7,10 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.app.main import create_app
-from backend.process_manager import ProcessManager
-from backend.registry import RunRegistry
-from backend.tests.test_api_compat import create_fixture_settings
+from server.app.main import create_app
+from server.process_manager import ProcessManager
+from server.registry import RunRegistry
+from server.tests.test_api_compat import create_fixture_settings
 
 
 class FakeOpenAI(BaseHTTPRequestHandler):

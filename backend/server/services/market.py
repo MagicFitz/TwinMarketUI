@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from backend.settings import Settings
+from server.settings import Settings
 
 from .read_only import ReadOnlyStore
 

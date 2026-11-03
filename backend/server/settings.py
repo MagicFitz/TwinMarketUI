@@ -17,6 +17,7 @@ RUNS_DIR_ENV = "TWINMARKET_RUNS_DIR"
 REGISTRY_PATH_ENV = "TWINMARKET_REGISTRY_PATH"
 ALLOWED_ORIGINS_ENV = "TWINMARKET_ALLOWED_ORIGINS"
 MDS_URL_ENV = "TWINMARKET_MDS_URL"
+DOCS_DIR_ENV = "TWINMARKET_DOCS_DIR"
 
 DEFAULT_ALLOWED_ORIGINS = ("http://127.0.0.1:5173",)
 DEFAULT_MDS_URL = "http://127.0.0.1:8100"
@@ -51,6 +52,8 @@ class Settings:
     allowed_origins: tuple[str, ...] = DEFAULT_ALLOWED_ORIGINS
     # Market data service base URL; runs pull frozen bundles from it at creation time.
     mds_url: str = DEFAULT_MDS_URL
+    # Published Markdown docs; they live at the repository root, beside backend/.
+    docs_dir: Path | None = None
 
     def __post_init__(self) -> None:
         # Direct construction is useful in tests and dependency injection.  Keep
@@ -61,6 +64,8 @@ class Settings:
         object.__setattr__(self, "runs_dir", Path(self.runs_dir).expanduser().resolve())
         object.__setattr__(self, "registry_path", Path(self.registry_path).expanduser().resolve())
         object.__setattr__(self, "allowed_origins", tuple(self.allowed_origins))
+        docs_dir = self.project_root / "docs" if self.docs_dir is None else self.docs_dir
+        object.__setattr__(self, "docs_dir", Path(docs_dir).expanduser().resolve())
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "Settings":
@@ -75,12 +80,13 @@ class Settings:
         raw_data_dir = source.get(DATA_DIR_ENV)
         raw_runs_dir = source.get(RUNS_DIR_ENV)
         raw_registry_path = source.get(REGISTRY_PATH_ENV)
+        raw_docs_dir = source.get(DOCS_DIR_ENV)
         data_dir = _resolve_path(raw_data_dir, base=project_root) if raw_data_dir else project_root / "data"
         runs_dir = _resolve_path(raw_runs_dir, base=project_root) if raw_runs_dir else project_root / "runs"
         registry_path = (
             _resolve_path(raw_registry_path, base=project_root)
             if raw_registry_path
-            else project_root / "backend" / "data" / "runs.sqlite3"
+            else project_root / "server" / "data" / "runs.sqlite3"
         )
         return cls(
             project_root=project_root.resolve(),
@@ -89,6 +95,7 @@ class Settings:
             registry_path=registry_path.resolve(),
             allowed_origins=_parse_origins(source.get(ALLOWED_ORIGINS_ENV)),
             mds_url=source.get(MDS_URL_ENV, "").strip() or DEFAULT_MDS_URL,
+            docs_dir=_resolve_path(raw_docs_dir, base=project_root) if raw_docs_dir else project_root.parent / "docs",
         )
 
     # A descriptive alias is useful to callers that do not care about the

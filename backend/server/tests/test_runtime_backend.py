@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from backend.registry import ConflictError, RunRegistry
+from server.registry import ConflictError, RunRegistry
 from runtime import EventStore, RuntimeObserver, RuntimeSnapshotReducer
 from runtime.event import RuntimeEvent
 from runtime.schemas import EventType, Scope

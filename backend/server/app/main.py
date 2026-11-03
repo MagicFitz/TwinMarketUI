@@ -13,9 +13,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend.process_manager import ProcessManager
-from backend.registry import ConflictError, NotFoundError, RunRegistry
-from backend.results import (
+from server.process_manager import ProcessManager
+from server.registry import ConflictError, NotFoundError, RunRegistry
+from server.results import (
     artifact_items,
     csv_export_chunks,
     downloadable_artifact,
@@ -25,17 +25,17 @@ from backend.results import (
     results_social,
     results_summary,
 )
-from backend.market_bundle import MarketInputError, mds_client
-from backend.run_service import create_run, materialize_market, normalize_config, write_manifest
-from backend.runtime_service import reclassify_completed_runs, runtime_snapshot, store_for
-from backend.services.agents import AgentService
-from backend.services.catalog import CatalogService
-from backend.services.documentation import DocumentationService
-from backend.services.logs import LogService
-from backend.services.llm_context import agent_llm_context
-from backend.services.market import MarketService
-from backend.services.model_settings import ModelSettingsService
-from backend.settings import Settings, get_settings
+from server.market_bundle import MarketInputError, mds_client
+from server.run_service import create_run, materialize_market, normalize_config, write_manifest
+from server.runtime_service import reclassify_completed_runs, runtime_snapshot, store_for
+from server.services.agents import AgentService
+from server.services.catalog import CatalogService
+from server.services.documentation import DocumentationService
+from server.services.logs import LogService
+from server.services.llm_context import agent_llm_context
+from server.services.market import MarketService
+from server.services.model_settings import ModelSettingsService
+from server.settings import Settings, get_settings
 
 
 class RunCreate(BaseModel):

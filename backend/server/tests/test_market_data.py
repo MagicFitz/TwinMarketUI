@@ -12,12 +12,12 @@ from unittest.mock import patch
 import pandas as pd
 from fastapi.testclient import TestClient
 
-from backend.app.main import create_app
-from backend.legacy_snapshots import fingerprint
-from backend.market_bundle import MarketInputError, MdsClient, unsupported_rules
-from backend.registry import RunRegistry
-from backend.run_service import create_run, validate_start
-from backend.settings import Settings
+from server.app.main import create_app
+from server.legacy_snapshots import fingerprint
+from server.market_bundle import MarketInputError, MdsClient, unsupported_rules
+from server.registry import RunRegistry
+from server.run_service import create_run, validate_start
+from server.settings import Settings
 from market_service.templates import publish
 from market_service.tests.fixtures import ROOT, SECRET, ServiceFixture
 from script.market_inputs import EmptyNewsIndex, news_for_date, open_trading_dates
@@ -39,12 +39,12 @@ class RunMarketFixture(ServiceFixture):
             db.execute("INSERT INTO Profiles VALUES ('1','2023-06-14 00:00:00')")
             db.execute("INSERT INTO Strategy VALUES ('1','hold')")
             db.execute("CREATE TABLE StockData(" + ",".join(column + " " + ("TEXT" if column in {"stock_id", "date"} else "REAL") for column in STOCK_COLUMNS) + ")")
-        self.settings = Settings(self.root, self.seed_dir, self.root / "runs", self.root / "backend" / "data" / "runs.sqlite3")
+        self.settings = Settings(self.root, self.seed_dir, self.root / "runs", self.root / "server" / "data" / "runs.sqlite3")
         self.mds = TestClient(self.mds_app())
         self.sync()
         self.transport = self.in_process
         self.clients = [patch(target, lambda settings: MdsClient(lambda *args: self.transport(*args)))
-                        for target in ("backend.run_service.mds_client", "backend.app.main.mds_client")]
+                        for target in ("server.run_service.mds_client", "server.app.main.mds_client")]
         for item in self.clients:
             item.start()
         self.registry = RunRegistry(self.settings.registry_path)
@@ -136,12 +136,12 @@ class TemplateRunTests(RunMarketFixture):
         self.assertEqual(validate_start(run, settings=self.settings), ["运行数据包的文件指纹不匹配"])
 
     def test_worker_passes_bundle_without_any_credential(self):
-        from backend.worker import run_worker
+        from server.worker import run_worker
         run = self.template_run()
         self.registry.transition(run["run_id"], "queued")
         self.transport = offline
         secrets = {"TUSHARE_TOKEN": SECRET, "TWINMARKET_MDS_TOKEN": "service-secret"}
-        with patch.dict(os.environ, secrets), patch("backend.worker.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")) as execute:
+        with patch.dict(os.environ, secrets), patch("server.worker.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")) as execute:
             self.assertEqual(run_worker(run["run_id"], settings=self.settings), 0)
         prepare, simulate = execute.call_args_list
         self.assertIn("--market-snapshot", prepare.args[0])
@@ -200,7 +200,7 @@ class InputTests(ServiceFixture):
 
 class SimulationSmokeTests(RunMarketFixture):
     def test_one_user_two_days_fake_model_real_matching_settlement_and_results(self):
-        from backend.results import results_agents
+        from server.results import results_agents
         from script.prepare_simulation_run import write_beliefs
         # Production-sized fixture schema, copied into a private database.
         template = self.seed_dir / "real-template.db"
@@ -216,7 +216,7 @@ class SimulationSmokeTests(RunMarketFixture):
         (folder / "state.json").write_text(json.dumps({"status": "draft", "checkpoint": {}}))
         env = {**os.environ, "TWINMARKET_DATA_DIR": str(bundle), "TWINMARKET_MARKET_BUNDLE_ID": json.loads(
             (bundle / "bundle.json").read_text())["bundle_id"], "MPLCONFIGDIR": str(folder / "matplotlib"), "PYTHONPATH": str(ROOT)}
-        result = subprocess.run([sys.executable, "-m", "backend.tests.market_smoke_runner", str(folder)], cwd=ROOT,
+        result = subprocess.run([sys.executable, "-m", "server.tests.market_smoke_runner", str(folder)], cwd=ROOT,
                                 env=env, text=True, capture_output=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout[-10000:] + result.stderr[-6000:])
         state = json.loads((folder / "state.json").read_text())

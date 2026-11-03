@@ -217,7 +217,7 @@ def write_manifest(output, config, settings):
         "inputs": {key: file_fingerprint(path, settings) for key, path in input_paths.items() if path.is_file()},
         "market_environment": environment["manifest"] if environment else {"mode": "legacy"},
         "research_warnings": environment["warnings"] if environment else [],
-        "command_summary": "backend.worker -> simulation.py (arguments stored in Registry config)",
+        "command_summary": "server.worker -> simulation.py (arguments stored in Registry config)",
         "checkpoint_rule": {"resume_date": "必须等于 state.json checkpoint.next_date",
                             "cleanup": "续跑日及之后的数据库记录和按日期产物将被重新生成"},
     }

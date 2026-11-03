@@ -13,12 +13,12 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from backend.app.main import create_app
-from backend.process_manager import ProcessManager
-from backend.registry import ConflictError, RunRegistry
-from backend.run_service import create_run
-from backend.runtime_service import reclassify_completed_runs, runtime_snapshot, store_for
-from backend.settings import Settings
+from server.app.main import create_app
+from server.process_manager import ProcessManager
+from server.registry import ConflictError, RunRegistry
+from server.run_service import create_run
+from server.runtime_service import reclassify_completed_runs, runtime_snapshot, store_for
+from server.settings import Settings
 from runtime import EventStore, RuntimeObserver
 from runtime.event import RuntimeEvent
 from runtime.outcome import first_all_failed_day
@@ -58,7 +58,7 @@ class RunFixture(unittest.TestCase):
         (self.root / "config" / "api.yaml").write_text("model_name: fixture\n")
         (self.root / "util" / "belief").mkdir(parents=True)
         shutil.copyfile(ROOT / "util" / "belief" / "belief_1000_0129.csv", self.root / "util" / "belief" / "belief_1000_0129.csv")
-        self.settings = Settings(self.root, data, self.root / "runs", self.root / "backend" / "data" / "runs.sqlite3")
+        self.settings = Settings(self.root, data, self.root / "runs", self.root / "server" / "data" / "runs.sqlite3")
         self.registry = RunRegistry(self.settings.registry_path)
 
     def tearDown(self):
@@ -101,11 +101,11 @@ class LegacyAlignmentTests(RunFixture):
             self.legacy_run("2024-12-30", "2025-01-15")
 
     def test_worker_passes_the_legacy_history_and_reports_preparation_errors(self):
-        from backend.worker import run_worker
+        from server.worker import run_worker
         run = self.legacy_run()
         self.registry.transition(run["run_id"], "queued")
         failing = SimpleNamespace(returncode=1, stdout="", stderr="Traceback\nValueError: 历史不足\n")
-        with patch("backend.worker.subprocess.run", return_value=failing) as execute:
+        with patch("server.worker.subprocess.run", return_value=failing) as execute:
             self.assertEqual(run_worker(run["run_id"], settings=self.settings), 1)
         arguments = execute.call_args.args[0]
         self.assertEqual(arguments[arguments.index("--legacy-history") + 1], str(self.settings.data_dir))
@@ -115,7 +115,7 @@ class LegacyAlignmentTests(RunFixture):
 
 class FailureStatusTests(RunFixture):
     def test_simulation_failure_message_and_checkpoint_reach_the_registry(self):
-        from backend.worker import run_worker
+        from server.worker import run_worker
         run = self.legacy_run()
         self.registry.transition(run["run_id"], "queued")
         folder = Path(run["output_dir"])
@@ -129,7 +129,7 @@ class FailureStatusTests(RunFixture):
                 return SimpleNamespace(returncode=1)
             return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-        with patch("backend.worker.subprocess.run", side_effect=simulate):
+        with patch("server.worker.subprocess.run", side_effect=simulate):
             self.assertEqual(run_worker(run["run_id"], settings=self.settings), 1)
         failed = self.registry.get(run["run_id"])
         self.assertEqual((failed["status"], failed["health"]), ("failed", "degraded"))
@@ -158,7 +158,7 @@ class RetryTests(RunFixture):
         (folder / "user_10.db").write_text("broken prepared data")
         self.finish(run, "failed", [agent_event(0, EventType.FAILED, "2023-06-19", "a", "state", "'user_id'")])
         last_event = store_for(run).last_id
-        with patch("backend.process_manager.subprocess.Popen", return_value=SimpleNamespace(pid=os.getpid())) as launch:
+        with patch("server.process_manager.subprocess.Popen", return_value=SimpleNamespace(pid=os.getpid())) as launch:
             retried = self.manager().retry(run["run_id"])
         self.assertEqual(retried["status"], "queued")
         self.assertNotIn("--resume", launch.call_args.args[0])
@@ -181,11 +181,11 @@ class RetryTests(RunFixture):
             (folder / name).write_text("x")
         self.finish(run, "failed", [])
         self.registry.update(run["run_id"], checkpoint_json=json.dumps({"last_completed_date": "2023-06-19", "next_date": "2023-06-20"}))
-        with patch("backend.process_manager.subprocess.Popen", return_value=SimpleNamespace(pid=os.getpid())) as launch:
+        with patch("server.process_manager.subprocess.Popen", return_value=SimpleNamespace(pid=os.getpid())) as launch:
             self.manager().retry(run["run_id"])
         self.assertIn("--resume", launch.call_args.args[0])
         self.registry.transition(run["run_id"], "cancelled")
-        with patch("backend.process_manager.subprocess.Popen", return_value=SimpleNamespace(pid=os.getpid())) as launch:
+        with patch("server.process_manager.subprocess.Popen", return_value=SimpleNamespace(pid=os.getpid())) as launch:
             self.manager().retry(run["run_id"], "restart")
         self.assertNotIn("--resume", launch.call_args.args[0])
         self.assertTrue((folder / "attempts").is_dir())
@@ -215,7 +215,7 @@ class SimulationStopsTests(unittest.TestCase):
             env = {**os.environ, "TWINMARKET_DATA_DIR": str(ROOT / "data"), "TWINMARKET_MARKET_BUNDLE_ID": "test",
                    "SMOKE_BREAK_AGENTS": "1", "SMOKE_START": "2023-06-19", "SMOKE_END": "2023-06-20",
                    "MPLCONFIGDIR": str(folder / "matplotlib"), "PYTHONPATH": str(ROOT)}
-            result = subprocess.run([sys.executable, "-m", "backend.tests.market_smoke_runner", str(folder)], cwd=ROOT,
+            result = subprocess.run([sys.executable, "-m", "server.tests.market_smoke_runner", str(folder)], cwd=ROOT,
                                     env=env, text=True, capture_output=True, timeout=60)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("AllAgentsFailed", result.stderr)

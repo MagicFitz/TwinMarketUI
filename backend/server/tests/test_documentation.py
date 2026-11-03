@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from backend.services.documentation import documentation
-from backend.settings import Settings
+from server.services.documentation import documentation
+from server.settings import Settings
 
 
 class DocumentationTests(unittest.TestCase):
@@ -17,7 +17,7 @@ class DocumentationTests(unittest.TestCase):
             project_root=self.root,
             data_dir=self.root / "data",
             runs_dir=self.root / "runs",
-            registry_path=self.root / "backend" / "data" / "runs.sqlite3",
+            registry_path=self.root / "server" / "data" / "runs.sqlite3",
         )
 
     def tearDown(self):

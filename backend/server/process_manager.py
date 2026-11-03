@@ -48,7 +48,7 @@ class ProcessManager:
         if len(active) + len(queued) >= self.max_concurrency:
             raise ConflictError("本机运行配额已满")
         run = self.registry.transition(run_id, "queued")
-        command = [sys.executable, "-m", "backend.worker", "--run-id", run_id]
+        command = [sys.executable, "-m", "server.worker", "--run-id", run_id]
         if resume:
             command.append("--resume")
         worker_environment = os.environ.copy()

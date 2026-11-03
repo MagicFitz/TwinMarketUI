@@ -21,7 +21,7 @@ CONFIG_PATH="${CONFIG_PATH:-config/api.yaml}"
 TEMPLATE_DB="${TEMPLATE_DB:-data/sys_1000.db}"
 BELIEF_SOURCE="${BELIEF_SOURCE:-util/belief/belief_1000_0129.csv}"
 RUN_DIR="runs/${RUN_ID}"
-PYTHON="${PYTHON:-venv/bin/python}"
+PYTHON="${PYTHON:-.venv/bin/python}"
 
 if [[ ! "$USER_COUNT" =~ ^[0-9]+$ ]] || (( USER_COUNT < 1 || USER_COUNT > 1000 )); then
     echo "USER_COUNT 必须是 1 到 1000 之间的整数" >&2

@@ -1,6 +1,6 @@
 """Safe, framework-independent access to TwinMarket's local read models.
 
-The HTTP layer supplies a :class:`backend.settings.Settings` instance.  This
+The HTTP layer supplies a :class:`server.settings.Settings` instance.  This
 module intentionally has no FastAPI or Studio dependency so the same guards
 are used by catalog, documentation, Agent, Market, and log services.
 """
@@ -11,7 +11,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any, Iterable
 
-from backend.settings import Settings
+from server.settings import Settings
 
 
 class WorkspacePathError(ValueError):
@@ -30,7 +30,8 @@ class ReadOnlyStore:
         self.project_root = Path(settings.project_root).resolve()
         self.data_dir = Path(settings.data_dir).resolve()
         self.runs_dir = Path(settings.runs_dir).resolve()
-        self._roots = tuple(dict.fromkeys((self.project_root, self.data_dir, self.runs_dir)))
+        self.docs_dir = Path(settings.docs_dir).resolve()
+        self._roots = tuple(dict.fromkeys((self.project_root, self.data_dir, self.runs_dir, self.docs_dir)))
 
     @staticmethod
     def _under(path: Path, root: Path) -> bool:
