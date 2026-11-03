@@ -249,7 +249,7 @@ TwinMarketUI v0.1 完成的标准只有：
 
 ## Architecture
 
-- 独立 `backend/`
+- 独立 `backend/server/`
 - 消除 `studio.*` dependency
 - service 分层
 - API contract 清理

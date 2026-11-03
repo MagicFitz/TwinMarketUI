@@ -7,14 +7,14 @@ order: 30
 
 # TwinMarket 代码架构、数据流与扩展指南
 
-> **状态更新（2026-11-03）**：顶层 `frontend/` 已删除，`studio/` 是唯一的前端。下文涉及 `frontend/` 的内容（含“旧 `studio/` 仅作迁移参考”等表述）为历史记录，不再反映现状。
+> **状态更新（2026-11-03）**：仓库已重组为 `frontend/`（原 `studio/`）和 `backend/`，下文路径已按新布局更新。本文写作时描述的 React + TypeScript 前端已删除，文中该前端的具体文件（如 `frontend/src/lib/api.ts`、`frontend/src/routes/`）不再存在；现在的 `frontend/` 是原 Studio。
 
 本文面向两类读者：
 
 - 第一次阅读 TwinMarket，希望快速建立完整心智模型的开发者；
 - 准备新增运行参数、Agent 行为、撮合规则、Runtime 状态、后端 API 或前端页面的维护者。
 
-本文基于 2026-09-25 的当前工作树，覆盖顶层 `frontend/`、`backend/`、`runtime/`、`simulation.py`、`trader/`、`util/`、根目录 `Agent.py`，以及被这些模块直接调用的 `script/prepare_simulation_run.py` 和 `script/run_contract.py`。旧的 `studio/` 只作为迁移历史存在，不是当前前后端实现来源。
+本文基于 2026-09-25 的工作树（路径已按 2026-11-03 的新布局更新），覆盖 `frontend/`、`backend/server/`、`backend/simulation/runtime/`、`backend/simulation/engine.py`、`backend/simulation/trader/`、`backend/simulation/stores/`、`backend/simulation/agent.py`，以及被这些模块直接调用的 `backend/simulation/prepare_run.py` 和 `backend/simulation/run_contract.py`。
 
 文档描述的是“代码现在实际怎样运行”，并在后半部分单列当前限制和推荐改法。阅读代码时应优先相信当前实现和测试，而不是早期设计文档中的理想行为。
 
@@ -29,20 +29,20 @@ TwinMarket 不是一个把 Python 对象直接暴露给网页的单体应用。�
 FastAPI 控制面与只读查询面
     │  SQLite Registry + 子进程 + 运行目录
     ▼
-backend.worker
+server.worker
     │  命令行参数
     ▼
-simulation.py
-    ├─ trader/：Agent 决策、提示词、模型调用辅助、撮合与结算
-    ├─ util/：用户/论坛数据库、关系图、向量新闻库
-    └─ runtime/：事件写入
+backend/simulation/engine.py
+    ├─ backend/simulation/trader/：Agent 决策、提示词、模型调用辅助、撮合与结算
+    ├─ backend/simulation/stores/：用户/论坛数据库、关系图、向量新闻库
+    └─ backend/simulation/runtime/：事件写入
 ```
 
 最重要的三条原则是：
 
 1. **前端不直接引用 Python 内核。** 所有数据都通过后端 HTTP API 获取。
-2. **后端不在请求线程中运行仿真。** 它启动独立 Worker，Worker 再启动 `simulation.py`。
-3. **后端与内核的稳定边界是运行目录。** 生命周期索引在 Registry；领域事实、事件和结果在 `runs/<run_id>/`。
+2. **后端不在请求线程中运行仿真。** 它启动独立 Worker，Worker 再启动 `backend/simulation/engine.py`。
+3. **后端与内核的稳定边界是运行目录。** 生命周期索引在 Registry；领域事实、事件和结果在 `backend/runs/<run_id>/`。
 
 因此，排查问题时先判断问题属于哪一种：
 
@@ -62,16 +62,16 @@ simulation.py
 | 路径 | 当前职责 | 主要消费者 |
 | --- | --- | --- |
 | `frontend/` | React SPA，Run 创建/控制/观察、结果、Agent、市场、设置、文档 | 浏览器或 Electron 壳 |
-| `backend/` | FastAPI、Run Registry、进程编排、只读查询、结果与设置服务 | 前端 |
-| `runtime/` | 与 Web 无关的事件、事件存储、脱敏、快照归约 | 内核写入，后端读取 |
-| `simulation.py` | 仿真 CLI 与自然日主循环 | Worker、CLI 脚本 |
-| `Agent.py` | 模型 Provider 适配、能力判断、上下文预算和重试 | `PersonalizedStockTrader` |
-| `trader/` | Agent 策略、Prompt、响应解析、撮合和结算 | `simulation.py` |
-| `util/` | 用户 DB、论坛 DB、关系图、FAISS 新闻索引 | `simulation.py`、`trader/` |
-| `script/` | Run 准备、CLI 运行契约、检查脚本 | Worker、开发者 |
-| `data/` | 模板数据库、新闻、行情、交易日历和索引 | 准备脚本、内核 |
-| `config/` | 语言模型与嵌入模型配置 | Agent、向量检索、设置 API |
-| `runs/` | 每次运行的独占状态与结果 | Worker、内核、后端查询 |
+| `backend/server/` | FastAPI、Run Registry、进程编排、只读查询、结果与设置服务 | 前端 |
+| `backend/simulation/runtime/` | 与 Web 无关的事件、事件存储、脱敏、快照归约 | 内核写入，后端读取 |
+| `backend/simulation/engine.py` | 仿真 CLI 与自然日主循环 | Worker、CLI 脚本 |
+| `backend/simulation/agent.py` | 模型 Provider 适配、能力判断、上下文预算和重试 | `PersonalizedStockTrader` |
+| `backend/simulation/trader/` | Agent 策略、Prompt、响应解析、撮合和结算 | `backend/simulation/engine.py` |
+| `backend/simulation/stores/` | 用户 DB、论坛 DB、关系图、FAISS 新闻索引 | `backend/simulation/engine.py`、`backend/simulation/trader/` |
+| `backend/scripts/` | Run 准备、CLI 运行契约、检查脚本 | Worker、开发者 |
+| `backend/data/` | 模板数据库、新闻、行情、交易日历和索引 | 准备脚本、内核 |
+| `backend/config/` | 语言模型与嵌入模型配置 | Agent、向量检索、设置 API |
+| `backend/runs/` | 每次运行的独占状态与结果 | Worker、内核、后端查询 |
 | `docs/` | 带发布 frontmatter 的应用内文档 | 后端文档服务、前端文档页 |
 
 ### 2.2 依赖方向
@@ -81,9 +81,9 @@ simulation.py
 ```text
 frontend
    ↓ HTTP
-backend/app
+backend/server/app
    ↓ service / registry / process
-backend.worker
+server.worker
    ↓ CLI
 simulation
    ↓
@@ -96,23 +96,23 @@ simulation ──写──> run 目录中的 DB / JSON / CSV
 backend    ──读──> run 目录中的 DB / JSON / CSV
 ```
 
-例外是共享的 `runtime/`：它同时被内核和后端引用，但不应反向依赖 FastAPI 或 React。保持这一点可以让事件契约独立测试。
+例外是共享的 `backend/simulation/runtime/`：它同时被内核和后端引用，但不应反向依赖 FastAPI 或 React。保持这一点可以让事件契约独立测试。
 
 ### 2.3 关键 import 与调用关系
 
-- `backend/app/main.py` 装配 `RunRegistry`、`ProcessManager`、Runtime 和各查询服务。
-- `backend/process_manager.py` 使用 `subprocess.Popen` 启动 `python -m backend.worker`。
-- `backend/worker.py` 首次运行调用 `script/prepare_simulation_run.py`，随后启动 `simulation.py`。
-- `simulation.py` 引用：
-  - `runtime.EventStore`、`runtime.RuntimeObserver`；
-  - `Agent.BaseAgent`；
-  - `trader.trading_agent.PersonalizedStockTrader`；
-  - `trader.matching_engine`；
-  - `trader.utility.init_system`；
-  - `util.UserDB` 与 `util.ForumDB`；
-  - `script.run_contract` 中的原子 JSON 写入和按日清理函数。
-- `trader/trading_agent.py` 引用 `InformationDB`、UserDB/ForumDB、`TradingPrompt`、响应解析工具和 `BaseAgent`。
-- `backend/services/*` 原则上不调用交易算法，只安全读取已经落盘的事实。
+- `backend/server/app/main.py` 装配 `RunRegistry`、`ProcessManager`、Runtime 和各查询服务。
+- `backend/server/process_manager.py` 使用 `subprocess.Popen` 启动 `python -m server.worker`。
+- `backend/server/worker.py` 首次运行调用 `backend/simulation/prepare_run.py`，随后启动 `backend/simulation/engine.py`。
+- `backend/simulation/engine.py` 引用：
+  - `simulation.runtime.EventStore`、`simulation.runtime.RuntimeObserver`；
+  - `simulation.agent.BaseAgent`；
+  - `simulation.trader.trading_agent.PersonalizedStockTrader`；
+  - `simulation.trader.matching_engine`；
+  - `simulation.trader.utility.init_system`；
+  - `simulation.stores.UserDB` 与 `simulation.stores.ForumDB`；
+  - `simulation.run_contract` 中的原子 JSON 写入和按日清理函数。
+- `backend/simulation/trader/trading_agent.py` 引用 `InformationDB`、UserDB/ForumDB、`TradingPrompt`、响应解析工具和 `BaseAgent`。
+- `backend/server/services/*` 原则上不调用交易算法，只安全读取已经落盘的事实。
 
 ## 3. 两条运行入口
 
@@ -126,27 +126,27 @@ POST /api/runs
 POST /api/runs/{id}/start
   → ProcessManager.start()
   → queued
-  → python -m backend.worker --run-id ...
+  → python -m server.worker --run-id ...
   → running
-  → prepare_simulation_run.py
-  → python simulation.py ...
+  → prepare_run.py
+  → python -m simulation ...
   → completed / failed
 ```
 
-这是 `frontend/` 使用的主路径。Run 元数据使用 `backend/registry.py`，运行清单由 `backend/run_service.py` 创建。
+这是 `frontend/` 使用的主路径。Run 元数据使用 `backend/server/registry.py`，运行清单由 `backend/server/run_service.py` 创建。
 
 ### 3.2 CLI 入口
 
 ```text
-script/run.sh
-  → script/run_contract.py create / launch
-  → prepare_simulation_run.py
-  → simulation.py
+backend/scripts/run.sh
+  → backend/simulation/run_contract.py create / launch
+  → prepare_run.py
+  → backend/simulation/engine.py
 ```
 
 CLI 有自己的一套 v1 manifest/state/lock 契约；Backend 使用的是自己的 v2 Run 清单和 Registry。两条路径最终执行相同内核，但创建、锁、续跑和状态同步并非同一实现。
 
-维护时必须明确改动需要支持哪条路径。若是通用仿真参数，通常需要同时修改 Backend Worker 和 `script/run.sh`；若只改一条，另一条会产生行为漂移。
+维护时必须明确改动需要支持哪条路径。若是通用仿真参数，通常需要同时修改 Backend Worker 和 `backend/scripts/run.sh`；若只改一条，另一条会产生行为漂移。
 
 ## 4. 持久化边界与数据模型
 
@@ -154,20 +154,20 @@ CLI 有自己的一套 v1 manifest/state/lock 契约；Backend 使用的是自�
 
 默认输入包括：
 
-- `data/sys_1000.db`：用户、策略、股票资料和初始历史状态模板；
-- `data/stock_data.csv`：真实行情输入；
-- `data/trading_days.csv`：交易日历；
-- `data/sorted_impact_news.pkl`：按日新闻；
-- `data/InformationDB_news_2023/`：FAISS 新闻索引及元数据；
-- `util/belief/*.csv`：初始 belief；
-- `config/api.yaml`：语言模型配置；
-- `config/embedding.yaml`：嵌入模型配置。
+- `backend/data/sys_1000.db`：用户、策略、股票资料和初始历史状态模板；
+- `backend/data/stock_data.csv`：真实行情输入；
+- `backend/data/trading_days.csv`：交易日历；
+- `backend/data/sorted_impact_news.pkl`：按日新闻；
+- `backend/data/InformationDB_news_2023/`：FAISS 新闻索引及元数据；
+- `backend/data/belief/*.csv`：初始 belief；
+- `backend/config/api.yaml`：语言模型配置；
+- `backend/config/embedding.yaml`：嵌入模型配置。
 
 `TWINMARKET_DATA_DIR` 可以改写多数数据根路径，但当前并非所有撮合代码都完整遵循它，详见“当前限制”。
 
 ### 4.2 Run Registry
 
-`backend/registry.py` 使用单表 SQLite，保存控制面需要快速查询的字段：
+`backend/server/registry.py` 使用单表 SQLite，保存控制面需要快速查询的字段：
 
 ```text
 run_id, name, description
@@ -188,7 +188,7 @@ Registry 是生命周期索引，不是完整仿真事实库。新增普通实�
 Backend 创建的典型目录如下：
 
 ```text
-runs/<run_id>/
+backend/runs/<run_id>/
 ├─ manifest.json
 ├─ state.json
 ├─ events.jsonl
@@ -245,7 +245,7 @@ Agent 每个自然日读取前一日 `Profiles`，撮合/结算完成后写入�
 
 ### 4.5 论坛 SQLite
 
-`util/ForumDB.py` 管理：
+`backend/simulation/stores/ForumDB.py` 管理：
 
 | 表 | 作用 |
 | --- | --- |
@@ -259,7 +259,7 @@ belief 的跨日传播依赖帖子：首日从 CSV 获取，后续优先读取�
 
 ### 5.1 状态机
 
-生命周期状态定义在 `backend/registry.py`：
+生命周期状态定义在 `backend/server/registry.py`：
 
 ```text
 draft ──> queued ──> running ──> completed
@@ -288,7 +288,7 @@ Health 与 lifecycle 是不同维度：
 
 ### 5.2 创建
 
-`backend/run_service.py`：
+`backend/server/run_service.py`：
 
 1. 合并 `DEFAULTS`；
 2. 类型转换并校验用户数、日期、概率和路径；
@@ -306,14 +306,14 @@ Health 与 lifecycle 是不同维度：
 1. 校验输入资源和状态；
 2. 检查进程内并发配额；
 3. 转为 `queued`；
-4. 以独立进程组启动 `backend.worker`；
+4. 以独立进程组启动 `server.worker`；
 5. 保存 PID。
 
-`backend.worker`：
+`server.worker`：
 
 1. 转为 `running` 并发出 Run 事件；
 2. Fresh Run 调准备脚本，复制模板数据库、保留确定性的前 N 个用户并筛选 belief；
-3. 拼装 `simulation.py` CLI 参数；
+3. 拼装 `backend/simulation/engine.py` CLI 参数；
 4. 将 stdout/stderr 追加到 `simulation.log`；
 5. 根据子进程退出结果更新 Registry 和 RuntimeEvent；
 6. 成功时从 `state.json` 读取最终 checkpoint。
@@ -354,7 +354,7 @@ checkpoint.next_date 重新计算
 
 ## 6. 内核自然日数据流
 
-核心入口是 `simulation.py::init_simulation()`。
+核心入口是 `backend/simulation/engine.py::init_simulation()`。
 
 ### 6.1 启动清理与静态加载
 
@@ -415,7 +415,7 @@ Agent 新决策与新发帖
 
 ### 6.4 用户关系图
 
-`util/UserDB.py::build_graph_new()` 每日：
+`backend/simulation/stores/UserDB.py::build_graph_new()` 每日：
 
 1. 查询日期范围内每个用户的交易；
 2. 按行业累计带时间衰减的权重；
@@ -481,7 +481,7 @@ simulation.process_user_input()
 
 ### 7.3 模型层
 
-`Agent.py::BaseAgent`：
+`backend/simulation/agent.py::BaseAgent`：
 
 - 支持 OpenAI/OpenRouter/vLLM 兼容接口和 local/Ollama；
 - 从 YAML 读取模型名、地址、密钥、超时和能力覆盖；
@@ -490,17 +490,17 @@ simulation.process_user_input()
 - 只对连接、超时、限流和服务端错误重试；
 - 记录 request id、延迟和 token 等运维信息，不记录密钥。
 
-`trader/prompts.py` 是 Prompt 契约中心。改动模型输出格式时，不能只改 Prompt，还必须同步解析、标准化、订单生成和测试。
+`backend/simulation/trader/prompts.py` 是 Prompt 契约中心。改动模型输出格式时，不能只改 Prompt，还必须同步解析、标准化、订单生成和测试。
 
 ### 7.4 新闻检索
 
-`util/InformationDB.py`：
+`backend/simulation/stores/InformationDB.py`：
 
 - `EmbeddingWorker` 调嵌入模型；
 - `InformationDB` 加载 FAISS 索引和元数据；
 - Agent 先生成查询，再做公告/新闻语义检索。
 
-`trader/trading_agent.py` 在模块导入时创建并加载全局 `INFORMATION_DB`。这意味着 import 本身有配置、文件和内存副作用，Worker 启动前必须确保嵌入配置与索引可用。
+`backend/simulation/trader/trading_agent.py` 在模块导入时创建并加载全局 `INFORMATION_DB`。这意味着 import 本身有配置、文件和内存副作用，Worker 启动前必须确保嵌入配置与索引可用。
 
 ### 7.5 Runtime Agent 阶段
 
@@ -532,7 +532,7 @@ Prompt/YAML decision
 
 ### 8.2 撮合
 
-`trader/matching_engine.py`：
+`backend/simulation/trader/matching_engine.py`：
 
 1. 给订单生成交易时段内的随机唯一时间；
 2. 按资产分组；
@@ -577,7 +577,7 @@ Prompt/YAML decision
 
 ### 9.1 事件契约
 
-`runtime/event.py::RuntimeEvent` 是不可变事件，主要字段：
+`backend/simulation/runtime/event.py::RuntimeEvent` 是不可变事件，主要字段：
 
 ```text
 event_id, run_id, event, scope, stage
@@ -637,7 +637,7 @@ SSE 事件用于最近事件和触发快照 reload；前端不自行完整归约
 
 ### 10.1 应用装配
 
-`backend/app/main.py::create_app()` 是应用工厂，负责：
+`backend/server/app/main.py::create_app()` 是应用工厂，负责：
 
 - 读取 `Settings`；
 - 创建/注入 Registry 与 ProcessManager；
@@ -648,7 +648,8 @@ SSE 事件用于最近事件和触发快照 reload；前端不自行完整归约
 模块级 `app` 供 Uvicorn 使用：
 
 ```bash
-python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8766
+cd backend
+python -m uvicorn server.app.main:app --host 127.0.0.1 --port 8766
 ```
 
 主要环境变量：
@@ -794,13 +795,13 @@ index.html
 
 | 契约 | 后端/内核 | 前端 |
 | --- | --- | --- |
-| Run status | `backend/registry.py` | `RunStatus`、badge、按钮条件 |
-| Health/Stage | runtime/registry | 类型与 badge |
+| Run status | `backend/server/registry.py` | `RunStatus`、badge、按钮条件 |
+| Health/Stage | backend/simulation/runtime/registry | 类型与 badge |
 | Run config | `run_service.DEFAULTS` | `RunConfig`、创建表单 |
-| RuntimeEvent | `runtime/event.py` | `RuntimeEvent` |
-| RuntimeSnapshot | `runtime/snapshot.py` | `RuntimeSnapshot` |
-| 固定阶段 | `runtime/schemas.py` | `runtime-page.tsx` 数组 |
-| Result DTO | `backend/results.py` | `api.ts` 与结果页 |
+| RuntimeEvent | `backend/simulation/runtime/event.py` | `RuntimeEvent` |
+| RuntimeSnapshot | `backend/simulation/runtime/snapshot.py` | `RuntimeSnapshot` |
+| 固定阶段 | `backend/simulation/runtime/schemas.py` | `runtime-page.tsx` 数组 |
+| Result DTO | `backend/server/results.py` | `api.ts` 与结果页 |
 
 当前 OpenAPI 响应多数没有 `response_model`，生成类型经常是 `unknown`，业务也没有引用生成文件。这是契约漂移的主要来源。
 
@@ -819,7 +820,7 @@ NewRunPage form
   → ProcessManager
   → worker
   → prepare input DB/belief
-  → simulation.py
+  → backend/simulation/engine.py
 ```
 
 ### 12.2 单日反馈闭环
@@ -855,19 +856,19 @@ NewRunPage form
 
 按顺序检查：
 
-1. `backend/run_service.py`
+1. `backend/server/run_service.py`
    - `DEFAULTS`；
    - `normalize_config()` 的类型、范围、路径和互斥校验；
    - 若是输入文件，加入 fingerprint。
-2. `backend/app/main.py`
+2. `backend/server/app/main.py`
    - 请求模型和 API 文档。
-3. `backend/worker.py`
-   - 转换为明确的 `simulation.py` CLI 参数。
-4. `simulation.py`
+3. `backend/server/worker.py`
+   - 转换为明确的 `backend/simulation/engine.py` CLI 参数。
+4. `backend/simulation/engine.py`
    - `parse_args()`；
    - `init_simulation()` 参数；
    - 实际算法。
-5. `script/run.sh`
+5. `backend/scripts/run.sh`
    - 若 CLI 也要支持，加入环境变量/参数和清单。
 6. `frontend/src/lib/api-types.ts`
    - `RunConfig`。
@@ -896,9 +897,9 @@ TradingPrompt
 操作建议：
 
 1. 先定义输入/输出 schema 和失败语义；
-2. 修改 `trader/prompts.py`；
-3. 修改 `trader/trading_agent.py`；
-4. 修改 `trader/utility.py` 的解析/修复；
+2. 修改 `backend/simulation/trader/prompts.py`；
+3. 修改 `backend/simulation/trader/trading_agent.py`；
+4. 修改 `backend/simulation/trader/utility.py` 的解析/修复；
 5. 若输出字段变化，同步撮合读取；
 6. 在 RuntimeEvent 只放脱敏摘要；
 7. 用固定模型响应 fixture 测试解析，不让核心测试依赖真实 API。
@@ -954,7 +955,7 @@ OrderIntent[]
 1. 模板 DB 的 `StockData` schema；
 2. 正常交易日更新；
 3. 无订单/休市日更新；
-4. `trader/utility.py` 指标白名单和名称映射；
+4. `backend/simulation/trader/utility.py` 指标白名单和名称映射；
 5. Agent 技术数据读取和 Prompt 格式；
 6. Backend Market/Result DTO；
 7. 前端图表或表格；
@@ -977,10 +978,10 @@ OrderIntent[]
 
 同步修改：
 
-1. `runtime/schemas.py` 的枚举/阶段；
-2. `runtime/event.py`；
+1. `backend/simulation/runtime/schemas.py` 的枚举/阶段；
+2. `backend/simulation/runtime/event.py`；
 3. 内核真实工作点的 Observer hook；
-4. `runtime/snapshot.py` 的归约规则；
+4. `backend/simulation/runtime/snapshot.py` 的归约规则；
 5. 后端 response model；
 6. `frontend/src/lib/api-types.ts`；
 7. `runtime-page.tsx` 阶段顺序、统计和提示；
@@ -1008,9 +1009,9 @@ OrderIntent[]
 推荐步骤：
 
 1. 明确来源和数据口径；
-2. 在 `backend/results.py` 建立安全只读 adapter；
+2. 在 `backend/server/results.py` 建立安全只读 adapter；
 3. 定义 Pydantic response model；
-4. 在 `backend/app/main.py` 增加 route；
+4. 在 `backend/server/app/main.py` 增加 route；
 5. 在 `frontend/src/lib/api.ts` 增加 typed wrapper；
 6. 在 `api-types.ts` 加 DTO；
 7. 在 Results 页面增加 tab、筛选、分页、空/错状态；
@@ -1022,10 +1023,10 @@ OrderIntent[]
 
 用户/市场 DB 变化需要检查：
 
-- `data/sys_1000.db` 模板；
-- `prepare_simulation_run.py` 的裁剪 SQL；
-- `util/UserDB.py`；
-- `trader/` 的读取和写入；
+- `backend/data/sys_1000.db` 模板；
+- `prepare_run.py` 的裁剪 SQL；
+- `backend/simulation/stores/UserDB.py`；
+- `backend/simulation/trader/` 的读取和写入；
 - Agents/Market/Results 查询；
 - 前端 DTO；
 - 测试 fixture；
@@ -1062,7 +1063,7 @@ OrderIntent[]
 
 #### 14.1 Fresh/Resume 用魔法日期推断
 
-`simulation.py` 以 `start_date == "2023-06-15"` 判断是否 fresh，并只在这个日期初始化论坛。Backend/前端却允许任意开始日期。
+`backend/simulation/engine.py` 以 `start_date == "2023-06-15"` 判断是否 fresh，并只在这个日期初始化论坛。Backend/前端却允许任意开始日期。
 
 影响：
 
@@ -1148,7 +1149,7 @@ Agent 的真实 LLM 工作集中在 `interpretation`，后续 decision/action �
 
 #### 14.14 数据根没有完整贯穿
 
-新闻、日历和索引大多遵循 `TWINMARKET_DATA_DIR`，但 matching engine 的真实行情默认仍使用 `data/stock_data.csv`。
+新闻、日历和索引大多遵循 `TWINMARKET_DATA_DIR`，但 matching engine 的真实行情默认仍使用 `backend/data/stock_data.csv`。
 
 推荐：把 data root/real market path 作为显式内核参数一路传入，禁止深层函数自行解析工作目录相对路径。
 
@@ -1240,11 +1241,11 @@ CLI 与 Backend 在 manifest 版本、锁、续跑和状态同步上已有差异
 
 ### 15.1 当前已有覆盖
 
-- 根 `tests/`
+- 根 `backend/simulation/tests/`
   - BaseAgent 能力和重试；
   - Run contract 的清理边界；
   - 用户子集和 belief 准备。
-- `backend/tests/`
+- `backend/server/tests/`
   - API 基本兼容；
   - RuntimeEvent、Reducer、Registry 基本迁移；
   - 路径逃逸、只读 SQLite、日志脱敏；
@@ -1255,7 +1256,8 @@ CLI 与 Backend 在 manifest 版本、锁、续跑和状态同步上已有差异
 统一检查入口：
 
 ```bash
-./script/check.sh
+cd backend
+scripts/check.sh
 ```
 
 它执行核心 Python 编译/单测、Shell 语法、后端测试、前端测试和构建。
@@ -1292,15 +1294,15 @@ CLI 与 Backend 在 manifest 版本、锁、续跑和状态同步上已有差异
 
 第一次阅读不建议从 1900 行撮合文件或大型 Agent 类逐行开始。按以下顺序更容易建立模型：
 
-1. `backend/run_service.py`：Run 参数和目录契约；
-2. `backend/process_manager.py`、`backend/worker.py`：谁启动谁；
-3. `simulation.py::init_simulation()`：每日骨架；
-4. `simulation.py::process_user_input()`：单 Agent 边界；
-5. `trader/trading_agent.py::input_info()`：Agent 决策顺序；
-6. `trader/matching_engine.py::test_matching_system()` 和 `process_trading_day()`：市场提交；
-7. `util/UserDB.py::build_graph_new()`、ForumDB 关键写接口；
-8. `runtime/event.py`、`event_store.py`、`snapshot.py`：观察协议；
-9. `backend/app/main.py` 与 `services/*`：HTTP 投影；
+1. `backend/server/run_service.py`：Run 参数和目录契约；
+2. `backend/server/process_manager.py`、`backend/server/worker.py`：谁启动谁；
+3. `backend/simulation/engine.py::init_simulation()`：每日骨架；
+4. `backend/simulation/engine.py::process_user_input()`：单 Agent 边界；
+5. `backend/simulation/trader/trading_agent.py::input_info()`：Agent 决策顺序；
+6. `backend/simulation/trader/matching_engine.py::test_matching_system()` 和 `process_trading_day()`：市场提交；
+7. `backend/simulation/stores/UserDB.py::build_graph_new()`、ForumDB 关键写接口；
+8. `backend/simulation/runtime/event.py`、`event_store.py`、`snapshot.py`：观察协议；
+9. `backend/server/app/main.py` 与 `services/*`：HTTP 投影；
 10. `frontend/src/lib/api.ts`、hooks、各 routes：页面如何消费投影。
 
 调试某个具体 Run 时，推荐按事实倒推：
@@ -1352,7 +1354,7 @@ Registry row
 - [ ] 旧 Run/事件有兼容策略；
 - [ ] mutation 后前端状态明确 reload、替换或导航；
 - [ ] loading/empty/error/终态行为可见；
-- [ ] 单元、集成、构建和 `./script/check.sh` 通过。
+- [ ] 单元、集成、构建和 `backend/scripts/check.sh` 通过。
 
 ## 18. 建议的演进目标
 

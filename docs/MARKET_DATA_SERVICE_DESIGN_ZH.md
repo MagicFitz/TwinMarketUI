@@ -12,9 +12,9 @@
 
 | 资产 | 内容 | 问题 |
 | --- | --- | --- |
-| `data/sorted_impact_news.pkl` | `cal_date, news[list[str]]`，550 天（2023-06-15 → 2024-12-15），共 3439 条，日均中位数 3 条，最多 133 条 | 只有正文字符串，没有标题、来源、发布时间、排序分数。有近似重复（如“【标题】正文”与正文本身）。排序方法不可追溯 |
-| `data/InformationDB_news_2023/` | `IndexFlatL2`，3439 个向量，类型全部是 `daily_news` | 由同一个 pkl 构建，没有记录嵌入模型和维度。使用 pickle 序列化 |
-| `util/InformationDB.py` 中的公告、新闻联播、长篇、快讯 CSV 管线 | 支持四类数据入库 | 仓库里没有这些原始数据，也没有获取脚本 |
+| `backend/data/sorted_impact_news.pkl` | `cal_date, news[list[str]]`，550 天（2023-06-15 → 2024-12-15），共 3439 条，日均中位数 3 条，最多 133 条 | 只有正文字符串，没有标题、来源、发布时间、排序分数。有近似重复（如“【标题】正文”与正文本身）。排序方法不可追溯 |
+| `backend/data/InformationDB_news_2023/` | `IndexFlatL2`，3439 个向量，类型全部是 `daily_news` | 由同一个 pkl 构建，没有记录嵌入模型和维度。使用 pickle 序列化 |
+| `backend/simulation/stores/InformationDB.py` 中的公告、新闻联播、长篇、快讯 CSV 管线 | 支持四类数据入库 | 仓库里没有这些原始数据，也没有获取脚本 |
 
 - **旧版模式**：top user 在 `_read_news()` 中读取当天全部新闻；非随机交易者通过 `_desire_agent()` 检索最近 7 天的新闻。
 - **快照模式**：`market_sync.py` 写入全空的新闻文件，Agent 使用 `EmptyNewsIndex`，因此没有任何新闻。当前的默认快照覆盖 2023-01 到 2026-10，跑在上面的实验都没有新闻。
@@ -22,7 +22,7 @@
 
 ### 1.2 行情与规则
 
-- 行情同步（`backend/market_data/*`、`services/market_sync.py`、`market_worker.py`）和 Tushare 凭据都放在仿真后端里，与 Run 管理共用一个进程和一个 registry 目录。
+- 行情同步（`backend/server/market_data/*`、`services/market_sync.py`、`market_worker.py`）和 Tushare 凭据都放在仿真后端里，与 Run 管理共用一个进程和一个 registry 目录。
 - 市场规则写死在仿真代码中：
   - 涨跌停 ±10%：`trading_agent._get_price_limits`、`matching_engine.calculate_closing_price`；
   - 交易数量是 100 股的整数倍；
@@ -37,7 +37,7 @@
 
 1. **前视偏差**：新闻只精确到日期，D 日的新闻在 D 日开盘前就发给 Agent；检索的截止日期也包含当天。
 2. **嵌入模型没有固定**：查询用运行时配置的模型，与建索引时的模型可能不同，检索失败时静默返回空。
-3. **Bug**：LLM 没给出查询词时，`_desire_agent()` 返回 `""`，调用方按两个值解包，会抛出 `ValueError`，这条调用链上没有异常处理（`trader/trading_agent.py:434`）。
+3. **Bug**：LLM 没给出查询词时，`_desire_agent()` 返回 `""`，调用方按两个值解包，会抛出 `ValueError`，这条调用链上没有异常处理（`backend/simulation/trader/trading_agent.py:434`）。
 4. **检索效率**：先全量检索再按日期过滤，数据量大了会变慢。
 5. **可复现性**：Run 清单里没有索引、嵌入模型和市场规则。
 6. **耦合**：数据同步要等仿真后端在线，仿真后端也持有 Tushare Token。数据只有在人手动点“更新数据”时才会更新。
@@ -208,7 +208,7 @@ bundle 中会带一份 `rules.json`，内容是模板 `session` 与 `rules` 两�
 
 - `_get_price_limits` 和 `calculate_closing_price` 读取 `price_limit_pct`；
 - 下单数量取整读取 `lot_size`；
-- `simulation.py` 用 `information_cutoff` 计算每天的新闻窗口和检索上界；
+- `backend/simulation/engine.py` 用 `information_cutoff` 计算每天的新闻窗口和检索上界；
 - `non_trading_day` 决定非交易日的分支；
 - 模板中的 `settlement` 和 `fees` 如果是现有代码不支持的取值（例如 T+0、非零费率），MDS 照样可以保存，但仿真后端在创建 Run 时会拒绝，返回 `RULE_UNSUPPORTED`，并说明哪一项不支持。这样模板语义能逐步扩展，同时不会悄悄被忽略。
 
@@ -248,8 +248,8 @@ bundle 中会带一份 `rules.json`，内容是模板 `session` 与 `rules` 两�
 
    `bundle_id = "b-" + sha256(template_sha, start, end, data_version)[:20]`，相同的请求直接返回已有的 bundle。
 
-3. **拉取**：仿真后端用 `GET /v1/bundles/{id}/archive`（tar.zst 或 tar.gz）下载到 `runs/<run_id>/market/`，逐个文件校验 SHA-256，然后设为只读。manifest 记录 `market_template`、`bundle_id`、`data_version` 和文件指纹。
-4. **运行**：Worker 把 `TWINMARKET_DATA_DIR` 指向 `runs/<run_id>/market/`，再用 `TWINMARKET_RULES` 指向 `rules.json`。续跑时只重新校验指纹，不再访问 MDS。
+3. **拉取**：仿真后端用 `GET /v1/bundles/{id}/archive`（tar.zst 或 tar.gz）下载到 `backend/runs/<run_id>/market/`，逐个文件校验 SHA-256，然后设为只读。manifest 记录 `market_template`、`bundle_id`、`data_version` 和文件指纹。
+4. **运行**：Worker 把 `TWINMARKET_DATA_DIR` 指向 `backend/runs/<run_id>/market/`，再用 `TWINMARKET_RULES` 指向 `rules.json`。续跑时只重新校验指纹，不再访问 MDS。
 
 ### 5.2 时间语义（防前视）
 
@@ -347,9 +347,9 @@ Workspace / Run 详情中新增“市场环境”卡片，显示模板版本、b
 
 ## 八、迁移
 
-1. **代码搬迁**：`backend/market_data/*`、`services/market_sync.py`、`services/data_sources.py`、`market_worker.py` 移到新包 `market_service/`（FastAPI 应用，入口 `python -m market_service`）。`script/dev.sh` 同时启动三个进程。
+1. **代码搬迁**：`backend/server/market_data/*`、`services/market_sync.py`、`services/data_sources.py`、`market_worker.py` 移到新包 `backend/market_service/`（FastAPI 应用，入口 `python -m market_service`）。`backend/scripts/dev.sh` 同时启动三个进程。
 2. **旧数据导入**：
-   - 把 `data/market_snapshots/market-20261022-…` 中的 raw 和 normalized 数据导入仓库，作为最初的数据版本。
+   - 把 `backend/data/market_snapshots/market-20261022-…` 中的 raw 和 normalized 数据导入仓库，作为最初的数据版本。
    - 把 `sorted_impact_news.pkl` 导入为 `source=legacy`、日精度的新闻。
    - 旧的 `stock_data.csv` 由 `legacy-2023` 模板引用。
 3. **旧 Run 兼容**：已经引用 `market_snapshot_id` 的 Run 继续按原路径解析（只读，不再新建）；legacy 模式的 Run 不受影响。
@@ -367,7 +367,7 @@ Workspace / Run 详情中新增“市场环境”卡片，显示模板版本、b
 
 ## 附：P0 实现状态（2026-10-26）
 
-P0 已经实现，代码在 `market_service/`（服务）、`backend/market_bundle.py`（客户端）和 Studio 的 `MarketData.jsx`。下表列出与上文设计不同或推迟的地方。
+P0 已经实现，代码在 `backend/market_service/`（服务）、`backend/server/market_bundle.py`（客户端）和 Studio 的 `MarketData.jsx`。下表列出与上文设计不同或推迟的地方。
 
 | 项目 | 设计 | P0 实际 |
 | --- | --- | --- |
@@ -380,7 +380,7 @@ P0 已经实现，代码在 `market_service/`（服务）、`backend/market_bund
 | 旧快照 Run | — | 按 Run 清单中的文件指纹校验后，可以继续启动和续跑；不能新建，复制时会被拒绝 |
 | 调度器、新闻采集、新闻页 | P1 | 未实现；`GET /v1/news` 浏览接口已经提供 |
 
-运行方式：`script/dev.sh` 同时启动 MDS（8100）、仿真后端（8766）和 Studio。MDS 首次启动时，会把 `data/` 中最新的已发布快照（如果没有，就用旧 CSV）和 `sorted_impact_news.pkl` 导入 `mds_data/`，生成数据版本 1。
+运行方式：`backend/scripts/dev.sh` 同时启动 MDS（8100）、仿真后端（8766）和 Studio。MDS 首次启动时，会把 `backend/data/` 中最新的已发布快照（如果没有，就用旧 CSV）和 `sorted_impact_news.pkl` 导入 `backend/mds_data/`，生成数据版本 1。
 
 ## 十、测试
 
@@ -395,7 +395,7 @@ P0 已经实现，代码在 `market_service/`（服务）、`backend/market_bund
   - 文件指纹被篡改时拒绝使用；
   - 模板中有仿真不支持的规则时返回 `RULE_UNSUPPORTED`。
 - **仿真后端**：
-  - 用假 MDS 测试 plan 和 bundle 的契约（JSON schema 固定在 `market_service/contract/`）；
+  - 用假 MDS 测试 plan 和 bundle 的契约（JSON schema 固定在 `backend/market_service/contract/`）；
   - MDS 离线时：已有 Run 可以续跑，新建 Run 返回明确的错误。
 - **端到端**：1 个用户、2 个交易日、使用假模型，确认新闻广播和检索事件都已写入，manifest 中有模板和 bundle 信息。
 

@@ -1,6 +1,6 @@
 # TwinMarket Application TODO
 
-> **状态更新（2026-11-03）**：顶层 `frontend/` 已删除，`studio/` 是唯一的前端。下文涉及 `frontend/` 的内容（含“旧 `studio/` 仅作迁移参考”等表述）为历史记录，不再反映现状。
+> **状态更新（2026-11-03）**：顶层 React + TypeScript `frontend/` 已删除，原 `studio/` 改名为 `frontend/`，是唯一的前端；Python 代码都在 `backend/` 下。下文涉及 `frontend/` 的内容（含“旧 `studio/` 仅作迁移参考”等表述）为历史记录，不再反映现状。
 
 > 更新时间：2026-09-23
 >

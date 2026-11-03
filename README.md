@@ -32,19 +32,33 @@ TwinMarket is an innovative stock market simulation system powered by Large Lang
 ## 🚀 Quick Start
 
 ```bash
+cd backend
 # Configure your API and embedding models
 cp config/api_example.yaml config/api.yaml
 cp config/embedding_example.yaml config/embedding.yaml
 
 # Run the demo
-bash script/run.sh
+bash scripts/run.sh
+```
+
+## 📁 Repository Layout
+
+```text
+frontend/        Research Studio web app (React + Vite)
+backend/         All Python; run Python commands from here
+  server/        FastAPI control plane: run registry, worker, read APIs
+  simulation/    Simulation core: agents, matching, stores, runtime events
+  market_service/  Market data service
+  scripts/       CLI tools: dev.sh, run.sh, check.sh
+  config/ data/  Model config and simulation inputs
+docs/            In-app documentation
 ```
 
 ## 📝 Development Guide
 
 ### Extend Trading Strategies
 
-Implement new strategies in `trader/trading_agent.py`:
+Implement new strategies in `backend/simulation/trader/trading_agent.py`:
 
 ```python
 def custom_strategy(self, market_data):
@@ -55,7 +69,7 @@ def custom_strategy(self, market_data):
 
 ### Add New Evaluation Metrics
 
-Add metrics in `trader/utility.py`:
+Add metrics in `backend/simulation/trader/utility.py`:
 
 ```python
 def calculate_custom_metric(trades):

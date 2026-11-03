@@ -7,25 +7,25 @@ order: 35
 
 # P0 Runtime Observatory 后端实现契约
 
-本文记录 P0 已实现的后端行为、API 语义与数据口径。前端位于 `studio/frontend/`，独立控制面位于仓库顶层 `backend/`，框架无关的运行时事件模块位于 `runtime/`。普通 `simulation.log` 仅用于诊断；产品状态由 `events.jsonl` 中的 RuntimeEvent 重建。
+本文记录 P0 已实现的后端行为、API 语义与数据口径。前端位于 `frontend/`，独立控制面位于仓库顶层 `backend/server/`，框架无关的运行时事件模块位于 `backend/simulation/runtime/`。普通 `simulation.log` 仅用于诊断；产品状态由 `events.jsonl` 中的 RuntimeEvent 重建。
 
 ## 3.1 修复模型请求阻塞
 
-模型能力、上下文预算与 4xx/超时/限流分类沿用 `Agent.py` 的 provider-aware 请求路径。调用指标以结构化日志和 RuntimeEvent 摘要呈现，不返回密钥、原始 prompt 或隐藏推理。
+模型能力、上下文预算与 4xx/超时/限流分类沿用 `backend/simulation/agent.py` 的 provider-aware 请求路径。调用指标以结构化日志和 RuntimeEvent 摘要呈现，不返回密钥、原始 prompt 或隐藏推理。
 
 ## 3.2 固化运行目录契约
 
-创建草稿会原子创建 `runs/<run_id>/`，拒绝任何同名目录。`manifest.json` 保存经脱敏的参数、输入文件 SHA-256 指纹与 checkpoint 规则；`state.json` 保存下一合法续跑日。独占 `run.lock`、独立数据库和日期边界清理共同阻止两个进程写入同一运行。
+创建草稿会原子创建 `backend/runs/<run_id>/`，拒绝任何同名目录。`manifest.json` 保存经脱敏的参数、输入文件 SHA-256 指纹与 checkpoint 规则；`state.json` 保存下一合法续跑日。独占 `run.lock`、独立数据库和日期边界清理共同阻止两个进程写入同一运行。
 
 ## 3.3 建立回归测试
 
-`script/check.sh` 分别检查核心仿真、独立后端和 Studio 前端：核心 Python 编译/单测与 Shell 语法、后端编译/单测及 `studio.*` 依赖防线、前端 Sites Worker 测试与 Vite 构建。RuntimeEvent、Registry、API 草稿行为均有自动化覆盖。
+`backend/scripts/check.sh` 分别检查核心仿真、市场数据服务和后端：核心 Python 编译/单测与 Shell 语法、市场数据服务单测及依赖防线、后端编译/单测及不直接导入 `market_service` 的防线。RuntimeEvent、Registry、API 草稿行为均有自动化覆盖。
 
 ## 4.1 持久化 Run 实体
 
-`backend/registry.py` 使用 SQLite 持久化运行 ID、名称、时间、生命周期、健康、配置、输出目录、checkpoint、PID、退出码、失败原因、心跳和最后事件 ID。服务查询会核对 PID；活动 Worker 消失且没有结束标记时标为 failed，停止中的 Worker 消失则标为 cancelled。
+`backend/server/registry.py` 使用 SQLite 持久化运行 ID、名称、时间、生命周期、健康、配置、输出目录、checkpoint、PID、退出码、失败原因、心跳和最后事件 ID。服务查询会核对 PID；活动 Worker 消失且没有结束标记时标为 failed，停止中的 Worker 消失则标为 cancelled。
 
-后端入口为 `uvicorn backend.app.main:app`。`TWINMARKET_PROJECT_ROOT`、`TWINMARKET_DATA_DIR`、`TWINMARKET_RUNS_DIR`、`TWINMARKET_REGISTRY_PATH` 与 `TWINMARKET_ALLOWED_ORIGINS` 分别配置项目、数据、运行、Registry 和 CORS allowlist；HTTP 服务会把相同配置传给脱离请求生命周期的 Worker。
+后端入口为 `uvicorn server.app.main:app`。`TWINMARKET_PROJECT_ROOT`、`TWINMARKET_DATA_DIR`、`TWINMARKET_RUNS_DIR`、`TWINMARKET_REGISTRY_PATH` 与 `TWINMARKET_ALLOWED_ORIGINS` 分别配置项目、数据、运行、Registry 和 CORS allowlist；HTTP 服务会把相同配置传给脱离请求生命周期的 Worker。
 
 ## 4.2 运行控制
 
@@ -37,7 +37,7 @@ order: 35
 
 ## 5.1 Runtime 模块
 
-`runtime/event.py` 定义 frozen RuntimeEvent；`observer.py` 提供 best-effort 五种 emit；`event_store.py` 追加 JSONL 并维护热缓冲；`snapshot.py` 用持久事件归约 Run、Day、Worker 和 Agent 状态；`schemas.py` 固定枚举和脱敏。观测写入失败只将 health 降为 degraded，绝不影响市场算法。
+`backend/simulation/runtime/event.py` 定义 frozen RuntimeEvent；`observer.py` 提供 best-effort 五种 emit；`event_store.py` 追加 JSONL 并维护热缓冲；`snapshot.py` 用持久事件归约 Run、Day、Worker 和 Agent 状态；`schemas.py` 固定枚举和脱敏。观测写入失败只将 health 降为 degraded，绝不影响市场算法。
 
 ## 5.2 事件契约
 
@@ -45,7 +45,7 @@ order: 35
 
 ## 5.3 仿真埋点
 
-`simulation.py` 在 Run、自然日 Prepare/Agents/Market/Social/Commit 和 Agent State/Perception/Interpretation/Decision/Action/Commit 处发射事件。非交易日将 Market 以 `skipped + market_closed` 发射。Agent 局部异常生成 agent failure，运行仍可继续，完成时 health 会降级。
+`backend/simulation/engine.py` 在 Run、自然日 Prepare/Agents/Market/Social/Commit 和 Agent State/Perception/Interpretation/Decision/Action/Commit 处发射事件。非交易日将 Market 以 `skipped + market_closed` 发射。Agent 局部异常生成 agent failure，运行仍可继续，完成时 health 会降级。
 
 ## 6. Runtime API 与实时传输
 

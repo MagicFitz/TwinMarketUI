@@ -22,24 +22,38 @@ TwinMarket 是一个创新的股票交易模拟系统，通过集成大语言模
 ## 🚀 快速开始
 
 ```bash
+cd backend
 # 自行配置 API 与 embedding 模型：
 cp config/api_example.yaml config/api.yaml
 cp config/embedding_example.yaml config/embedding.yaml
 
 # 1000 用户运行
-bash script/run.sh
+bash scripts/run.sh
 
 # 100 用户运行
-bash script/run_100.sh
+bash scripts/run_100.sh
 ```
 
 使用学院 `qwen3-30b` vLLM 服务、重建新闻向量索引、运行 10 个交易日以及实时观察进度，请参阅[模拟运行指南](docs/SIMULATION_GUIDE_ZH.md)。
+
+## 📁 目录结构
+
+```text
+frontend/        Research Studio 前端（React + Vite）
+backend/         全部 Python 代码；Python 命令都在这里执行
+  server/        FastAPI 控制面：Run Registry、Worker、查询接口
+  simulation/    仿真核心：Agent、撮合、数据存储、运行时事件
+  market_service/  市场数据服务
+  scripts/       命令行工具：dev.sh、run.sh、check.sh
+  config/ data/  模型配置与仿真输入
+docs/            应用内文档
+```
 
 ## 📝 开发指南
 
 ### 扩展交易策略
 
-在 `trader/trading_agent.py` 中实现新的交易策略：
+在 `backend/simulation/trader/trading_agent.py` 中实现新的交易策略：
 
 ```python
 def custom_strategy(self, market_data):
@@ -50,7 +64,7 @@ def custom_strategy(self, market_data):
 
 ### 添加新的评估指标
 
-在 `trader/utility.py` 中添加评估函数：
+在 `backend/simulation/trader/utility.py` 中添加评估函数：
 
 ```python
 def calculate_custom_metric(trades):

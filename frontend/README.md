@@ -8,22 +8,22 @@
 
 ## 前后端边界
 
-- `src/`：Studio 四空间壳层与只读资源页面；`frontend/LiveSimulationView.jsx`：真实 Run 配置、控制、Runtime Observatory、实时安全日志和结果表。
-- `../backend/`：独立 FastAPI 控制/查询面、SQLite Run Registry、Process Manager 与 Worker。
-- `../../runtime/`：与 FastAPI/React 解耦的 RuntimeEvent、EventStore、Observer 和 Snapshot Reducer。
-- `../../runs/<run_id>/`：每个运行独占的配置快照、`events.jsonl`、`state.json`、数据库、日志和结果产物。
+- `src/`：Studio 四空间壳层与各页面；`src/experiments/`：实验列表、新建实验和实验工作台。
+- `../backend/server/`：独立 FastAPI 控制/查询面、SQLite Run Registry、Process Manager 与 Worker。
+- `../backend/simulation/runtime/`：与 FastAPI/React 解耦的 RuntimeEvent、EventStore、Observer 和 Snapshot Reducer。
+- `../backend/runs/<run_id>/`：每个运行独占的配置快照、`events.jsonl`、`state.json`、数据库、日志和结果产物。
 
 ## 本地运行
 
 前端代理 `/api` 到 `127.0.0.1:8766` 的 FastAPI 控制面：
 
 ```sh
-cd /Users/fitz/Projects/TwinMarket
-venv/bin/python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8766
+cd /Users/fitz/Projects/TwinMarket/backend
+.venv/bin/python -m uvicorn server.app.main:app --host 127.0.0.1 --port 8766
 ```
 
 ```sh
-cd /Users/fitz/Projects/TwinMarket/studio
+cd /Users/fitz/Projects/TwinMarket/frontend
 npm ci
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
@@ -43,7 +43,7 @@ Python 3.10+，Node 18+；浏览器自动化测试使用本机已安装的 Googl
 ## 数据口径与边界
 
 - `logs_*` 目录暂按一实验/一运行导入；没有编造 Experiment、Group 或 Environment 版本注册表。
-- 独立后端的只读服务仍使用 `mode=ro` + `PRAGMA query_only=ON`；新 Registry 默认只写入 `backend/data/` 与当前 `runs/<run_id>/`，不写既有 `logs_*`。这些位置可通过后端环境变量覆盖。
+- 独立后端的只读服务仍使用 `mode=ro` + `PRAGMA query_only=ON`；新 Registry 默认只写入 `backend/server/data/` 与当前 `backend/runs/<run_id>/`，不写既有 `logs_*`。这些位置可通过后端环境变量覆盖。
 - 仅绑定 loopback；禁止将这个无鉴权的开发服务转发到公网。Vite 开发代理把 `/api` 指向本机 FastAPI。
 - 配置只输出白名单参数、模型名称和文件存在性；日志仅抽取正则匹配的运行事件，不返回原始响应、凭据或 HTTP 请求详情。PKL 只检查文件存在性与大小，不反序列化。
 - “近期有更新”只表示日志文件新鲜，不表示进程存活。“已完成”必须检测到结束标记。120 秒未更新标记“日志未更新”，不自动判定失败。
@@ -56,10 +56,11 @@ Python 3.10+，Node 18+；浏览器自动化测试使用本机已安装的 Googl
 ## 验证
 
 ```sh
-./script/check.sh
+cd backend
+scripts/check.sh
 ```
 
-浏览器检查需先用 `script/dev.sh` 启动后端与 Studio，并使用本机 Google Chrome：
+浏览器检查需先用 `backend/scripts/dev.sh` 启动后端与 Studio，并使用本机 Google Chrome：
 
 ```sh
 npm run qa:smoke    # 断言检查
