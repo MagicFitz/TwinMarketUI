@@ -10,9 +10,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
-from runtime import RuntimeObserver
-from runtime.outcome import first_all_failed_day
-from runtime.schemas import EventType, Scope
+from simulation.runtime import RuntimeObserver
+from simulation.runtime.outcome import first_all_failed_day
+from simulation.runtime.schemas import EventType, Scope
 
 from .registry import RunRegistry
 from .run_service import market_environment, validate_start
@@ -73,7 +73,8 @@ def run_worker(run_id: str, *, resume: bool = False, settings: Settings | None =
             prepared = subprocess.run(
                 [
                     sys.executable,
-                    str(settings.project_root / "script" / "prepare_simulation_run.py"),
+                    "-m",
+                    "simulation.prepare_run",
                     "--template-db",
                     config["template_db"],
                     "--belief-source",
@@ -109,7 +110,8 @@ def run_worker(run_id: str, *, resume: bool = False, settings: Settings | None =
         log = folder / "simulation.log"
         command = [
             sys.executable,
-            str(settings.project_root / "simulation.py"),
+            "-m",
+            "simulation",
             "--log_dir",
             str(folder),
             "--forum_db",
@@ -161,7 +163,7 @@ def run_worker(run_id: str, *, resume: bool = False, settings: Settings | None =
         all_failed = first_all_failed_day(store_for(registry.get(run_id)).after(0, 1_000_000))
         if all_failed:
             raise RuntimeError(all_failed)
-        # simulation.py has appended events using another EventStore instance;
+        # the simulation process has appended events using another EventStore instance;
         # reopen it so this terminal event continues the ordered sequence.
         final_run = registry.get(run_id)
         observer = RuntimeObserver(

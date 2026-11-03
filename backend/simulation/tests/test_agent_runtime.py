@@ -9,10 +9,10 @@ from unittest.mock import Mock
 
 import openai
 
-from runtime import EventStore, RuntimeObserver, RuntimeSnapshotReducer
-from runtime.agent_run import AgentRun
-from simulation import run_agents_for_day
-from tests.test_agent import REQUEST, completion, make_agent, status_error
+from simulation.runtime import EventStore, RuntimeObserver, RuntimeSnapshotReducer
+from simulation.runtime.agent_run import AgentRun
+from simulation.engine import run_agents_for_day
+from simulation.tests.test_agent import REQUEST, completion, make_agent, status_error
 
 DATE = "2023-06-15"
 

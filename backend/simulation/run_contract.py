@@ -277,7 +277,7 @@ def main() -> int:
                                   Path(args.belief_file).resolve())
         return 0
     if not args.command or args.command[0] != "--":
-        raise ValueError("launch 命令必须用 -- 分隔，例如 launch ... -- python simulation.py")
+        raise ValueError("launch 命令必须用 -- 分隔，例如 launch ... -- python -m simulation")
     args.command = args.command[1:]
     return launch(args)
 

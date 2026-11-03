@@ -27,7 +27,6 @@ import concurrent.futures
 import os
 import random
 import sqlite3
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -36,9 +35,7 @@ import pandas as pd
 from tqdm import tqdm
 
 # 本地模块导入
-# 添加根目录到Python路径，以便导入Agent模块
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from Agent import BaseAgent  # 修复：使用正确的Agent模块路径
+from simulation.agent import BaseAgent
 
 
 # ============================ 全局配置常量 ============================
@@ -427,7 +424,7 @@ def init_belief(
 
         # ============================ 结果保存 ============================
         # 保存处理结果到指定目录
-        save_results(processed_df, "./util/belief")
+        save_results(processed_df, "./data/belief")
 
     except Exception as e:
         print(f"程序执行过程中发生错误: {e}")

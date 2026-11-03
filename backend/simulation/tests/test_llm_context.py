@@ -6,8 +6,8 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from server.services.llm_context import agent_llm_context
-from runtime.agent_run import AgentRun
-from tests.test_agent import completion, make_agent
+from simulation.runtime.agent_run import AgentRun
+from simulation.tests.test_agent import completion, make_agent
 
 DATE = "2023-06-15"
 

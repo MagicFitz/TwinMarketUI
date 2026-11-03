@@ -11,7 +11,7 @@ from unittest.mock import Mock
 import httpx2
 import openai
 
-from Agent import BaseAgent
+from simulation.agent import BaseAgent
 
 REQUEST = httpx2.Request("POST", "http://llm.test/v1/chat/completions")
 

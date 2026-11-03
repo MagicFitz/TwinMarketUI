@@ -16,8 +16,8 @@ import uuid
 import yaml
 from openai import APIConnectionError, APIStatusError, OpenAI
 
-from runtime.agent_run import current_agent_run
-from runtime.llm_context import estimate_tokens, utc_now
+from simulation.runtime.agent_run import current_agent_run
+from simulation.runtime.llm_context import estimate_tokens, utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -47,8 +47,8 @@ class BaseAgent:
     """
 
     def __init__(self, system_prompt=sys_default_prompt, config_path="./config/api.yaml"):
-        # 相对路径以项目根目录为基准
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), config_path)
+        # 相对路径以 backend/ 目录为基准
+        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), config_path)
         with open(config_path, "r") as config_file:
             self.config = yaml.safe_load(config_file)
 

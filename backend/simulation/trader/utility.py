@@ -40,7 +40,7 @@ import requests
 import yaml
 
 # 本地模块导入
-from Agent import BaseAgent
+from simulation.agent import BaseAgent
 
 # ============================ 全局变量配置 ============================
 
@@ -849,7 +849,7 @@ def rerank_documents(query, documents, timelines, top_n=2):
         - 返回结果按相关性从高到低排序
     """
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, "../config/reranker.yaml")
+    config_path = os.path.join(current_dir, "../../config/reranker.yaml")
     with open(config_path, "r") as config_file:
         config = yaml.load(config_file, Loader=yaml.FullLoader)
     api_key = random.choice(config["api_key"])
@@ -898,7 +898,7 @@ async def rerank_documents_async(query, documents, timelines, top_n=2):
     import aiohttp
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, "../config/reranker.yaml")
+    config_path = os.path.join(current_dir, "../../config/reranker.yaml")
     with open(config_path, "r") as config_file:
         config = yaml.load(config_file, Loader=yaml.FullLoader)
     api_key = random.choice(config["api_key"])

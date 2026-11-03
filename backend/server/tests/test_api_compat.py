@@ -16,15 +16,15 @@ def create_fixture_settings(root: Path) -> Settings:
     data_dir = root / "data"
     runs_dir = root / "runs"
     (root / "config").mkdir(parents=True)
-    (root / "util" / "belief").mkdir(parents=True)
+    (root / "data" / "belief").mkdir(parents=True)
     (root / "docs").mkdir(parents=True)
-    data_dir.mkdir()
+    data_dir.mkdir(exist_ok=True)
     runs_dir.mkdir()
 
     (root / "config" / "api.yaml").write_text("model_name: fixture-model\n", encoding="utf-8")
     (root / "config" / "api_example.yaml").write_text("model_name: fixture-model\n", encoding="utf-8")
     (root / "config" / "embedding.yaml").write_text("model_name: fixture-embedding\n", encoding="utf-8")
-    (root / "util" / "belief" / "belief_1000_0129.csv").write_text("user_id,belief\n1,0\n", encoding="utf-8")
+    (root / "data" / "belief" / "belief_1000_0129.csv").write_text("user_id,belief\n1,0\n", encoding="utf-8")
     for name in ("stock_data.csv", "trading_days.csv", "sorted_impact_news.pkl"):
         (data_dir / name).write_text("fixture\n", encoding="utf-8")
     (root / "docs" / "public.md").write_text("---\npublished: true\n---\n# Public\nBODY", encoding="utf-8")
@@ -102,7 +102,7 @@ class ApiCompatibilityTests(unittest.TestCase):
         manifest = json.loads((self.settings.runs_dir / "api-test" / "manifest.json").read_text())
         self.assertIn("code_version", manifest)
         self.assertIn("market_trading_days", manifest["inputs"])
-        self.assertEqual(manifest["command_summary"], "server.worker -> simulation.py (arguments stored in Registry config)")
+        self.assertEqual(manifest["command_summary"], "server.worker -> python -m simulation (arguments stored in Registry config)")
 
         runtime = self.client.get("/api/runs/api-test/runtime")
         self.assertEqual(runtime.status_code, 200)

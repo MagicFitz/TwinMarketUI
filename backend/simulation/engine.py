@@ -28,18 +28,18 @@ import yaml
 from openai import OpenAI
 from tqdm import tqdm
 
-from runtime import EventStore, RuntimeObserver
-from runtime.agent_run import AgentRun
-from runtime.schemas import Scope
+from simulation.runtime import EventStore, RuntimeObserver
+from simulation.runtime.agent_run import AgentRun
+from simulation.runtime.schemas import Scope
 
 # 本地模块导入
-import trader.trading_agent as TradingAgent
-from Agent import BaseAgent
-from trader.matching_engine import test_matching_system, update_profiles_table_holiday
-from trader.utility import init_system
-from runtime.outcome import ALL_AGENTS_FAILED, AllAgentsFailed, all_failed_message
-from script.run_contract import atomic_json_write, clear_date_scoped_artifacts
-from util.UserDB import (
+import simulation.trader.trading_agent as TradingAgent
+from simulation.agent import BaseAgent
+from simulation.trader.matching_engine import test_matching_system, update_profiles_table_holiday
+from simulation.trader.utility import init_system
+from simulation.runtime.outcome import ALL_AGENTS_FAILED, AllAgentsFailed, all_failed_message
+from simulation.run_contract import atomic_json_write, clear_date_scoped_artifacts
+from simulation.stores.UserDB import (
     get_all_user_ids,
     get_user_profile,
     build_graph,
@@ -49,7 +49,7 @@ from util.UserDB import (
     build_graph_new,
     get_top_n_users_by_degree,
 )
-from util.ForumDB import (
+from simulation.stores.ForumDB import (
     init_db_forum,
     execute_forum_actions,
     update_posts_score_by_date,
@@ -360,7 +360,7 @@ def init_simulation(
     node: int = 1000,
     log_dir: str = "logs",
     prob_of_technical: float = 0.3,
-    belief_init_path: str = "util/belief/belief_1000_0129.csv",
+    belief_init_path: str = "data/belief/belief_1000_0129.csv",
     top_n_user: float = 0.1,
     config_path: str = "./config/api.yaml",
     activate_prob: float = 1.0,
@@ -405,7 +405,7 @@ def init_simulation(
 
     # The independent backend passes TWINMARKET_DATA_DIR to detached Workers.
     # Keep the historical relative ``data/`` location when the variable is not
-    # set so direct simulation.py invocations retain their existing behavior.
+    # set so direct `python -m simulation` invocations retain their existing behavior.
     data_dir = Path(os.environ.get("TWINMARKET_DATA_DIR", "data"))
 
     # 加载重要新闻数据（已按影响力排序）
@@ -414,7 +414,7 @@ def init_simulation(
 
     # 加载交易日历数据，用于判断当日是否为交易日
     df_trading_days = pd.read_csv(data_dir / "trading_days.csv")
-    from script.market_inputs import open_trading_dates, news_for_date
+    from simulation.market_inputs import open_trading_dates, news_for_date
     trading_days = open_trading_dates(df_trading_days)
 
     # 从数据库加载用户交易策略信息
@@ -882,7 +882,7 @@ def parse_args():
     parser.add_argument(
         "--belief_init_path",
         type=str,
-        default="util/belief/belief_1000_0129.csv",
+        default="data/belief/belief_1000_0129.csv",
         help="用户初始信念值文件路径",
     )
     parser.add_argument(
@@ -896,58 +896,3 @@ def parse_args():
     parser.add_argument("--run-id", type=str, default=None, help="稳定的运行标识")
 
     return parser.parse_args()
-
-
-if __name__ == "__main__":
-    """
-    主程序入口：解析参数并启动模拟系统
-    """
-
-    # ============================ 参数解析与验证 ============================
-    args = parse_args()
-    random.seed(args.random_seed)
-
-    # 确保日志目录存在
-    if not os.path.exists(args.log_dir):
-        os.makedirs(args.log_dir)
-        print(f"创建日志目录: {args.log_dir}")
-
-    # 输出所有配置参数
-    print("\n=== 模拟配置参数 ===")
-    print(json.dumps(vars(args), indent=4, ensure_ascii=False))
-
-    # ============================ 检查点逻辑判断 ============================
-    checkpoint = args.checkpoint
-    print("模式: checkpoint 续跑" if checkpoint else "模式: 新建模拟")
-
-    # ============================ 数据库初始化 ============================
-    if not checkpoint:
-        print("初始化论坛数据库...")
-        init_db_forum(db_path=args.forum_db)
-        print("论坛数据库初始化完成")
-
-    # ============================ 启动模拟系统 ============================
-    print("\n=== 开始运行交易模拟系统 ===")
-    init_simulation(
-        start_date=pd.Timestamp(args.start_date),
-        end_date=pd.Timestamp(args.end_date),
-        forum_db=args.forum_db,
-        user_db=args.user_db,
-        debug=args.debug,
-        max_workers=args.max_workers,
-        agent_timeout=args.agent_timeout,
-        user_graph_save_name=args.user_graph_save_name,
-        checkpoint=checkpoint,
-        similarity_threshold=args.similarity_threshold,
-        time_decay_factor=args.time_decay_factor,
-        node=args.node,
-        log_dir=args.log_dir,
-        prob_of_technical=args.prob_of_technical,
-        belief_init_path=args.belief_init_path,
-        config_path=args.config_path,
-        activate_prob=args.activate_prob,
-        checkpoint_state_path=args.checkpoint_state_path,
-        runtime_events_path=args.runtime_events,
-        run_id=args.run_id,
-    )
-    print("\n=== 模拟系统运行完成 ===")

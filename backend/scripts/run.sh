@@ -19,7 +19,7 @@ PROB_OF_TECHNICAL="${PROB_OF_TECHNICAL:-0.5}"
 PREPARE_ONLY="${PREPARE_ONLY:-0}"
 CONFIG_PATH="${CONFIG_PATH:-config/api.yaml}"
 TEMPLATE_DB="${TEMPLATE_DB:-data/sys_1000.db}"
-BELIEF_SOURCE="${BELIEF_SOURCE:-util/belief/belief_1000_0129.csv}"
+BELIEF_SOURCE="${BELIEF_SOURCE:-data/belief/belief_1000_0129.csv}"
 RUN_DIR="runs/${RUN_ID}"
 PYTHON="${PYTHON:-.venv/bin/python}"
 
@@ -53,7 +53,7 @@ BELIEF_FILE="$RUN_DIR/belief_${USER_COUNT}.csv"
 LOG_FILE="$RUN_DIR/simulation.log"
 MPL_CACHE_DIR="$RUN_DIR/.matplotlib"
 if [[ -z "$RESUME_DATE" ]]; then
-    "$PYTHON" script/run_contract.py create \
+    "$PYTHON" -m simulation.run_contract create \
         --run-id "$RUN_ID" \
         --template-db "$TEMPLATE_DB" \
         --belief-source "$BELIEF_SOURCE" \
@@ -65,16 +65,16 @@ if [[ -z "$RESUME_DATE" ]]; then
         --activate-prob "$ACTIVATE_PROB" \
         --prob-of-technical "$PROB_OF_TECHNICAL" \
         --random-seed "$RANDOM_SEED" \
-        --command-summary "bash script/run.sh RUN_ID=$RUN_ID USER_COUNT=$USER_COUNT START_DATE=$START_DATE END_DATE=$END_DATE"
+        --command-summary "bash scripts/run.sh RUN_ID=$RUN_ID USER_COUNT=$USER_COUNT START_DATE=$START_DATE END_DATE=$END_DATE"
 
-    "$PYTHON" script/prepare_simulation_run.py \
+    "$PYTHON" -m simulation.prepare_run \
         --template-db "$TEMPLATE_DB" \
         --belief-source "$BELIEF_SOURCE" \
         --user-count "$USER_COUNT" \
         --user-db "$USER_DB" \
         --belief-output "$BELIEF_FILE"
 
-    "$PYTHON" script/run_contract.py record-prepared \
+    "$PYTHON" -m simulation.run_contract record-prepared \
         --run-dir "$RUN_DIR" \
         --user-db "$USER_DB" \
         --belief-file "$BELIEF_FILE"
@@ -90,7 +90,7 @@ echo "激活概率: $ACTIVATE_PROB"
 echo "运行目录: $RUN_DIR"
 echo "运行 ID: $RUN_ID"
 echo "随机种子: $RANDOM_SEED"
-echo "观察命令: $PYTHON script/monitor_simulation.py --log-dir $RUN_DIR"
+echo "观察命令: $PYTHON scripts/monitor_simulation.py --log-dir $RUN_DIR"
 echo "==========================="
 
 if [[ "$PREPARE_ONLY" == "1" ]]; then
@@ -103,12 +103,12 @@ if [[ -n "$RESUME_DATE" ]]; then
     RESUME_ARGS=(--resume-date "$RESUME_DATE")
 fi
 
-MPLCONFIGDIR="$MPL_CACHE_DIR" "$PYTHON" script/run_contract.py launch \
+MPLCONFIGDIR="$MPL_CACHE_DIR" "$PYTHON" -m simulation.run_contract launch \
     --run-dir "$RUN_DIR" \
     --user-count "$USER_COUNT" \
     "${RESUME_ARGS[@]}" \
     --log-file "$LOG_FILE" \
-    -- "$PYTHON" simulation.py \
+    -- "$PYTHON" -m simulation \
     --log_dir "$RUN_DIR" \
     --forum_db "$FORUM_DB" \
     --user_db "$USER_DB" \

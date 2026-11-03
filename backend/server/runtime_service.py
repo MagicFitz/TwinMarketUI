@@ -4,8 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from runtime import EventStore, RuntimeSnapshotReducer
-from runtime.outcome import first_all_failed_day
+from simulation.runtime import EventStore, RuntimeSnapshotReducer
+from simulation.runtime.outcome import first_all_failed_day
 
 
 def store_for(run: dict[str, Any]) -> EventStore:

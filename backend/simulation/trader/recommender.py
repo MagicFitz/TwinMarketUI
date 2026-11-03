@@ -59,7 +59,7 @@ class StockRecommender:
     def __init__(
         self,
         file_path: str = "data/guba_data.csv",
-        cache_dir: str = "trader/cache",
+        cache_dir: str = "simulation/trader/cache",
         stock_path: str = "data/stock_profile.csv",
     ):
         """

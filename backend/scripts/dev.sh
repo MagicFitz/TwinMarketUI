@@ -2,8 +2,8 @@
 # 一键启动本地开发环境：市场数据服务 + FastAPI 仿真后端 + Studio 前端（Vite）。
 # Ctrl-C 同时停止全部；任一进程退出时其余进程也会被停止。
 #
-#   script/dev.sh
-#   MDS_PORT=8200 BACKEND_PORT=8800 FRONTEND_PORT=5200 script/dev.sh
+#   backend/scripts/dev.sh
+#   MDS_PORT=8200 BACKEND_PORT=8800 FRONTEND_PORT=5200 backend/scripts/dev.sh
 #
 # 兼容 macOS 自带的 bash 3.2。
 

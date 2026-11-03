@@ -20,8 +20,8 @@ from server.run_service import create_run, validate_start
 from server.settings import Settings
 from market_service.templates import publish
 from market_service.tests.fixtures import ROOT, SECRET, ServiceFixture
-from script.market_inputs import EmptyNewsIndex, news_for_date, open_trading_dates
-from script.prepare_simulation_run import STOCK_COLUMNS, prepare_database
+from simulation.market_inputs import EmptyNewsIndex, news_for_date, open_trading_dates
+from simulation.prepare_run import STOCK_COLUMNS, prepare_database
 
 
 def offline(*_):
@@ -32,8 +32,8 @@ class RunMarketFixture(ServiceFixture):
     def setUp(self):
         super().setUp()
         (self.root / "config" / "api.yaml").write_text("model_name: fixture\n")
-        (self.root / "util" / "belief").mkdir(parents=True)
-        (self.root / "util" / "belief" / "belief_1000_0129.csv").write_text("user_id,belief\n1,0.5\n")
+        (self.root / "data" / "belief").mkdir(parents=True)
+        (self.root / "data" / "belief" / "belief_1000_0129.csv").write_text("user_id,belief\n1,0.5\n")
         with sqlite3.connect(self.seed_dir / "sys_1000.db") as db:
             db.executescript("CREATE TABLE Profiles(user_id TEXT,created_at TEXT); CREATE TABLE Strategy(user_id TEXT,strategy TEXT); CREATE TABLE TradingDetails(user_id TEXT);")
             db.execute("INSERT INTO Profiles VALUES ('1','2023-06-14 00:00:00')")
@@ -178,7 +178,7 @@ class LegacySnapshotRunTests(RunMarketFixture):
         (output / "manifest.json").write_text(json.dumps({"market_environment": {"snapshot_id": snapshot_id, "files": files},
                                                           "research_warnings": ["无新闻"]}))
         config = {"user_count": 1, "start_date": "2025-01-13", "end_date": "2025-01-14", "template_db": "data/sys_1000.db",
-                  "belief_source": "util/belief/belief_1000_0129.csv", "config_path": "config/api.yaml",
+                  "belief_source": "data/belief/belief_1000_0129.csv", "config_path": "config/api.yaml",
                   "market_data_mode": "snapshot", "market_snapshot_id": snapshot_id, "allow_missing_news": True}
         run = self.registry.create("old-run", "old", "", config, output)
         self.transport = offline
@@ -201,7 +201,7 @@ class InputTests(ServiceFixture):
 class SimulationSmokeTests(RunMarketFixture):
     def test_one_user_two_days_fake_model_real_matching_settlement_and_results(self):
         from server.results import results_agents
-        from script.prepare_simulation_run import write_beliefs
+        from simulation.prepare_run import write_beliefs
         # Production-sized fixture schema, copied into a private database.
         template = self.seed_dir / "real-template.db"
         shutil.copyfile(ROOT / "data" / "sys_1000.db", template)

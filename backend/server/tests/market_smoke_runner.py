@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pandas as pd
 import yaml
 
-from Agent import BaseAgent
+from simulation.agent import BaseAgent
 
 calls = []
 
@@ -38,8 +38,8 @@ def fake_model(self, messages=None, prompt=None, **kwargs):
 def main():
     # The parent supplies an isolated private database and snapshot environment.
     folder, snapshot = Path(sys.argv[1]), Path(os.environ['TWINMARKET_DATA_DIR'])
-    import simulation
-    from util.ForumDB import init_db_forum
+    from simulation import engine as simulation
+    from simulation.stores.ForumDB import init_db_forum
     original = simulation.process_user_input
     observed = []
     def observe(*args, **kwargs):
@@ -54,7 +54,7 @@ def main():
         # Every Agent fails while being built, as when its account is missing for the day.
         def broken(self, *args, **kwargs):
             raise KeyError('user_id')
-        patches.append(patch('trader.trading_agent.PersonalizedStockTrader.__init__', broken))
+        patches.append(patch('simulation.trader.trading_agent.PersonalizedStockTrader.__init__', broken))
     start, end = os.environ.get('SMOKE_START', '2025-01-13'), os.environ.get('SMOKE_END', '2025-01-14')
     with contextlib.ExitStack() as stack:
         for item in patches:

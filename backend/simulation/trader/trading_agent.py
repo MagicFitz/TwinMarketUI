@@ -39,9 +39,9 @@ import yaml
 from openai import OpenAI
 
 # 本地模块导入
-from util.InformationDB import InformationDB
-from util.UserDB import *
-from util.ForumDB import *
+from simulation.stores.InformationDB import InformationDB
+from simulation.stores.UserDB import *
+from simulation.stores.ForumDB import *
 from .utility import *
 from .prompts import TradingPrompt
 from .recommender import StockRecommender
@@ -57,7 +57,7 @@ DATA_DIR = Path(os.environ.get("TWINMARKET_DATA_DIR", "data"))
 if os.environ.get("TWINMARKET_MARKET_SNAPSHOT_ID") or os.environ.get("TWINMARKET_MARKET_BUNDLE_ID"):
     # Snapshots and market bundles ship no retrieval index yet: do not read the legacy
     # index, initialize an embedding client, or create directories in immutable inputs.
-    from script.market_inputs import EmptyNewsIndex
+    from simulation.market_inputs import EmptyNewsIndex
     INFORMATION_DB = EmptyNewsIndex()
 else:
     INFORMATION_DB = InformationDB(

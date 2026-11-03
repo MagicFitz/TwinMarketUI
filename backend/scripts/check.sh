@@ -13,11 +13,10 @@ if [[ ! -x "$PYTHON" ]]; then
 fi
 
 printf '\n== Core simulation ==\n'
-"$PYTHON" -m py_compile Agent.py simulation.py
-find runtime trader util script tests -type f -name '*.py' -exec "$PYTHON" -m py_compile {} +
-"$PYTHON" -m unittest discover -s tests -v
+find simulation scripts -type f -name '*.py' -exec "$PYTHON" -m py_compile {} +
+"$PYTHON" -m unittest discover -s simulation/tests -t . -v
 
-for shell_file in script/*.sh; do
+for shell_file in scripts/*.sh; do
     bash -n "$shell_file"
 done
 

@@ -2,7 +2,7 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from script.run_contract import clear_date_scoped_artifacts, run_dir_for
+from simulation.run_contract import clear_date_scoped_artifacts, run_dir_for
 
 
 class RunContractTests(unittest.TestCase):

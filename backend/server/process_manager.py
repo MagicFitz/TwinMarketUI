@@ -9,8 +9,8 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from runtime import RuntimeObserver
-from runtime.schemas import Scope
+from simulation.runtime import RuntimeObserver
+from simulation.runtime.schemas import Scope
 
 from .registry import ConflictError, RunRegistry
 from .run_service import archive_attempt, validate_start

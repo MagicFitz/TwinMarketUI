@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 
 from server.registry import ConflictError, RunRegistry
-from runtime import EventStore, RuntimeObserver, RuntimeSnapshotReducer
-from runtime.event import RuntimeEvent
-from runtime.schemas import EventType, Scope
+from simulation.runtime import EventStore, RuntimeObserver, RuntimeSnapshotReducer
+from simulation.runtime.event import RuntimeEvent
+from simulation.runtime.schemas import EventType, Scope
 
 
 class RuntimeEventTests(unittest.TestCase):

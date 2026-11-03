@@ -9,7 +9,7 @@ import pandas as pd
 # Use the empty retrieval index: no legacy FAISS file or embedding client in unit tests.
 os.environ.setdefault("TWINMARKET_MARKET_BUNDLE_ID", "test-bundle")
 
-from trader.trading_agent import PersonalizedStockTrader  # noqa: E402
+from simulation.trader.trading_agent import PersonalizedStockTrader  # noqa: E402
 
 DATE = pd.Timestamp("2025-01-13")
 

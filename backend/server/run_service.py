@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from runtime.schemas import redact
+from simulation.runtime.schemas import redact
 
 from .legacy_snapshots import resolve_pinned_snapshot
 from .market_bundle import BUNDLE_DIR, MarketInputError, mds_client, unsupported_rules, verify_bundle
@@ -29,7 +29,7 @@ DEFAULTS = {
     "prob_of_technical": 0.3,
     "random_seed": 20260916,
     "template_db": "data/sys_1000.db",
-    "belief_source": "util/belief/belief_1000_0129.csv",
+    "belief_source": "data/belief/belief_1000_0129.csv",
     "config_path": "config/api.yaml",
     # legacy: the repository's built-in files. template: a frozen bundle from the market
     # data service. snapshot: read-only compatibility for runs created before templates.
@@ -217,7 +217,7 @@ def write_manifest(output, config, settings):
         "inputs": {key: file_fingerprint(path, settings) for key, path in input_paths.items() if path.is_file()},
         "market_environment": environment["manifest"] if environment else {"mode": "legacy"},
         "research_warnings": environment["warnings"] if environment else [],
-        "command_summary": "server.worker -> simulation.py (arguments stored in Registry config)",
+        "command_summary": "server.worker -> python -m simulation (arguments stored in Registry config)",
         "checkpoint_rule": {"resume_date": "必须等于 state.json checkpoint.next_date",
                             "cleanup": "续跑日及之后的数据库记录和按日期产物将被重新生成"},
     }
@@ -327,8 +327,8 @@ def archive_attempt(run: dict[str, Any], registry: RunRegistry) -> Path:
     The event stream continues numbering after the archived one, so open event
     cursors stay valid, and starts with a marker pointing at the archive.
     """
-    from runtime import EventStore, RuntimeObserver
-    from runtime.schemas import Scope
+    from simulation.runtime import EventStore, RuntimeObserver
+    from simulation.runtime.schemas import Scope
 
     folder, config = Path(run["output_dir"]), run["config"]
     last_event = EventStore(folder / "events.jsonl").last_id

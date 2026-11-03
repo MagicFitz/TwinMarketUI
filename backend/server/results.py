@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-from runtime.schemas import redact
+from simulation.runtime.schemas import redact
 
 
 def _run_folder(run: dict[str, Any]) -> Path:

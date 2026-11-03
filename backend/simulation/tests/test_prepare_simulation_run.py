@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from script.prepare_simulation_run import prepare_database, write_beliefs
+from simulation.prepare_run import prepare_database, write_beliefs
 
 
 class PrepareSimulationRunTests(unittest.TestCase):

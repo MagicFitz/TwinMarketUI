@@ -19,11 +19,11 @@ from server.registry import ConflictError, RunRegistry
 from server.run_service import create_run
 from server.runtime_service import reclassify_completed_runs, runtime_snapshot, store_for
 from server.settings import Settings
-from runtime import EventStore, RuntimeObserver
-from runtime.event import RuntimeEvent
-from runtime.outcome import first_all_failed_day
-from runtime.schemas import EventType, Scope
-from script.prepare_simulation_run import prepare_database
+from simulation.runtime import EventStore, RuntimeObserver
+from simulation.runtime.event import RuntimeEvent
+from simulation.runtime.outcome import first_all_failed_day
+from simulation.runtime.schemas import EventType, Scope
+from simulation.prepare_run import prepare_database
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -56,8 +56,8 @@ class RunFixture(unittest.TestCase):
             shutil.copyfile(ROOT / "data" / name, data / name)
         (self.root / "config").mkdir()
         (self.root / "config" / "api.yaml").write_text("model_name: fixture\n")
-        (self.root / "util" / "belief").mkdir(parents=True)
-        shutil.copyfile(ROOT / "util" / "belief" / "belief_1000_0129.csv", self.root / "util" / "belief" / "belief_1000_0129.csv")
+        (self.root / "data" / "belief").mkdir(parents=True)
+        shutil.copyfile(ROOT / "data" / "belief" / "belief_1000_0129.csv", self.root / "data" / "belief" / "belief_1000_0129.csv")
         self.settings = Settings(self.root, data, self.root / "runs", self.root / "server" / "data" / "runs.sqlite3")
         self.registry = RunRegistry(self.settings.registry_path)
 
@@ -121,7 +121,7 @@ class FailureStatusTests(RunFixture):
         folder = Path(run["output_dir"])
 
         def simulate(command, **kwargs):
-            if "simulation.py" in command[1]:
+            if command[1:3] == ["-m", "simulation"]:
                 RuntimeObserver(run["run_id"], store_for(run)).failed(
                     Scope.DAY, "agents", simulation_date="2023-06-20", error_code="AllAgentsFailed",
                     error_summary="运行已停止：2023-06-20 全部 10 个 Agent 处理失败")
@@ -203,7 +203,7 @@ class SimulationStopsTests(unittest.TestCase):
     """The real simulation loop stops on the first day where every Agent failed."""
 
     def test_all_agents_failing_stops_before_the_checkpoint(self):
-        from script.prepare_simulation_run import write_beliefs
+        from simulation.prepare_run import write_beliefs
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             selected = prepare_database(ROOT / "data" / "sys_1000.db", folder / "users.db", 1, start_date="2023-06-19",
