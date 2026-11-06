@@ -10,13 +10,15 @@ export function parseRoute(pathname, search = "") {
   const query = new URLSearchParams(search);
   const run = /^\/studio\/runs\/([^/]+)(?:\/([a-z]+))?\/?$/.exec(pathname);
   if (run) {
-    // 兼容旧运行台地址 /live 与 /results。
-    const legacy = { live: "progress", results: "results" };
+    // 兼容旧地址：/live、/results 和 /agents 已并入运行进度与分析。
+    const legacy = { live: ["progress"], results: ["analysis", "market"], agents: ["analysis", "agents"] };
+    const [tab, subview] = legacy[run[2]] || [run[2] || null, null];
     return {
       space: "Experiment",
       view: "run",
       runId: decodeURIComponent(run[1]),
-      tab: legacy[run[2]] || run[2] || null,
+      tab,
+      subview: query.get("view") || subview,
       agent: query.get("agent"),
     };
   }

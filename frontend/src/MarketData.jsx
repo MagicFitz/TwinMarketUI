@@ -157,7 +157,7 @@ export function MarketWorkbench() {
   if (!data) return <Panel title="市场数据服务"><Flex justify="between" align="center"><Text size="2" color="gray" role={resource.error ? 'alert' : 'status'}>{resource.error || '正在读取市场数据服务…'}</Text><Button variant="soft" color="gray" onClick={resource.refresh}>刷新</Button></Flex></Panel>;
   const news = Object.entries(data.datasets.news || {});
   return <Flex direction="column" gap="4">
-    <Panel title="市场数据服务" hint="独立于仿真后端，负责同步与预处理。每次成功写入生成一个数据版本；实验创建时按模板拉取冻结的数据包，之后更新数据不影响已有实验。"
+    <Panel title="市场数据服务"
       actions={<Button disabled={busy || ongoing || !data.source.token_configured || !data.source.enabled} onClick={showSync}>更新数据</Button>}>
       {!data.source.token_configured && <Notice>请先前往 <a href="/studio/Setting#sources">设置 · 金融数据源</a> 配置 Tushare 连接。</Notice>}
       <Definition values={[['最新数据版本', data.data_version ?? '—'], ['行情已同步至', data.baseline_through || '—'], ['交易日历至', data.datasets.calendar?.through || '—'], ['最近可同步收盘日', data.latest_closed_date]]} />
@@ -168,7 +168,7 @@ export function MarketWorkbench() {
       </Flex>
     </Panel>
     <ErrorCallout>{error || resource.error}</ErrorCallout>
-    <Panel title="市场模板" hint="模板包含数据清单与开闭市、交易规则。新建实验时选择模板；发布后的模板版本不可修改。">
+    <Panel title="市场模板">
       <Table.Root size="1"><Table.Header><Table.Row><Table.ColumnHeaderCell>模板</Table.ColumnHeaderCell><Table.ColumnHeaderCell>新闻</Table.ColumnHeaderCell><Table.ColumnHeaderCell>规则</Table.ColumnHeaderCell><Table.ColumnHeaderCell justify="end">操作</Table.ColumnHeaderCell></Table.Row></Table.Header>
         <Table.Body>{data.templates.map(template => <Table.Row key={template.template_id} align="center">
           <Table.RowHeaderCell><Text weight="medium">{template.name}</Text><Text as="p" size="1" color="gray">{template.default ? '新实验默认 · ' : ''}{template.ref}</Text></Table.RowHeaderCell>
@@ -188,7 +188,7 @@ export function MarketWorkbench() {
         {job.data_version && <Text size="1" color="gray">数据版本 {job.data_version}</Text>}
       </Card>)}</Flex> : <Text size="2" color="gray">暂无同步任务。任务状态保存在市场数据服务中，刷新页面后可以继续查看。</Text>}
     </Panel>
-    <Panel title="数据版本" hint="只增不改：供应商修订会产生新版本，旧版本仍可原样读取，已创建的实验固定使用创建时的版本。">
+    <Panel title="数据版本">
       <Table.Root size="1"><Table.Header><Table.Row><Table.ColumnHeaderCell>版本</Table.ColumnHeaderCell><Table.ColumnHeaderCell>类型</Table.ColumnHeaderCell><Table.ColumnHeaderCell>行情有效至</Table.ColumnHeaderCell><Table.ColumnHeaderCell>提示</Table.ColumnHeaderCell><Table.ColumnHeaderCell justify="end">操作</Table.ColumnHeaderCell></Table.Row></Table.Header>
         <Table.Body>{data.versions.map(version => <Table.Row key={version.data_version} align="center">
           <Table.RowHeaderCell><Text weight="medium">v{version.data_version}</Text><Text as="p" size="1" color="gray">{stamp(version.created_at)}</Text></Table.RowHeaderCell>
@@ -198,7 +198,7 @@ export function MarketWorkbench() {
           <Table.Cell justify="end"><Button size="1" variant="ghost" color="gray" onClick={() => setDetail({ version })}>详情</Button></Table.Cell>
         </Table.Row>)}</Table.Body></Table.Root>
     </Panel>
-    <Panel title="资产成分与权重" hint="保留 10 个自定义指数。旧描述中的百分比舍入误差已按比例归一，并记录在资产定义中。">
+    <Panel title="资产成分与权重">
       <Flex direction="column" gap="2">{Object.entries(data.assets.assets).map(([code, asset]) => <details key={code} className="disclosure"><summary><Text size="2" weight="medium">{code} · {asset.name}</Text> <Text size="1" color="gray">{asset.constituents.length} 只成分股</Text></summary>
         <Table.Root size="1" mt="2"><Table.Header><Table.Row><Table.ColumnHeaderCell>成分股</Table.ColumnHeaderCell><Table.ColumnHeaderCell>代码</Table.ColumnHeaderCell><Table.ColumnHeaderCell justify="end">权重</Table.ColumnHeaderCell></Table.Row></Table.Header>
           <Table.Body>{asset.constituents.map(c => <Table.Row key={c.ts_code}><Table.Cell>{c.name}</Table.Cell><Table.Cell>{c.ts_code}</Table.Cell><Table.Cell justify="end" className="tabular">{(c.weight * 100).toFixed(2)}%</Table.Cell></Table.Row>)}</Table.Body></Table.Root></details>)}</Flex>

@@ -9,24 +9,21 @@ import {
   Grid,
   Heading,
   IconButton,
-  SegmentedControl,
-  Table,
   Tabs,
   Text,
 } from "@radix-ui/themes";
-import { DotsHorizontalIcon, DownloadIcon, ExclamationTriangleIcon, ResetIcon } from "@radix-ui/react-icons";
+import { DotsHorizontalIcon, ExclamationTriangleIcon, ResetIcon } from "@radix-ui/react-icons";
 import { fetchJson, isActiveRun, n, stamp, useNow, STATUS } from "../lib.js";
 import { Definition, Empty, ErrorCallout, Panel, Stat, StatusBadge, icon } from "../ui.jsx";
 import { useRouter } from "../router.jsx";
-import { AgentExplorer, AgentProgressBar, stageName } from "../agents/AgentExplorer.jsx";
-import { MarketChart } from "../MarketChart.jsx";
+import { AgentDialog, AgentProgressBar, stageName } from "../agents/AgentExplorer.jsx";
+import { AnalysisTab } from "./AnalysisTab.jsx";
 import { RestartDialog, RunControlButton, RunMoreMenu, useRunActions } from "./run-actions.jsx";
 
 // 工作台的 tab 与 URL 段一一对应；App 的面包屑也读取这份定义。
 export const WORKSPACE_TABS = [
   ["progress", "运行进度"],
-  ["agents", "Agents"],
-  ["results", "结果"],
+  ["analysis", "分析"],
   ["logs", "日志与诊断"],
   ["config", "配置"],
 ];
@@ -81,7 +78,8 @@ function useRunEvents(runId) {
   const [streamState, setStreamState] = useState("连接中");
   useEffect(() => {
     const key = `twinmarket:studio:event-cursor:${runId}`;
-    let cursor = Number(sessionStorage.getItem(key) || 0);
+    // 事件列表只存在于本次挂载，刷新后回放最近 30 条，否则已结束实验的列表会一直为空。
+    let cursor = Math.max(0, Number(sessionStorage.getItem(key) || 0) - 30);
     let source, timer, closed = false, retry = 0;
     const seen = new Set();
     const connect = () => {
@@ -154,18 +152,17 @@ function ProgressTab({ run, snapshot, events, streamState, openAgent }) {
   return (
     <Flex direction="column" gap="4">
       <Grid columns={{ initial: "2", md: "4" }} gap="3">
-        <Stat label="模拟日期" value={snapshot.day.date || "—"} hint={`区间 ${run.config.start_date} → ${run.config.end_date}`} />
+        <Stat label="模拟日期" value={snapshot.day.date || "—"} />
         <Stat label="当前阶段" value={currentStage(snapshot.day)} />
         <Stat
           label="Agent"
           value={`${counts.completed || 0} / ${agents.length || run.config.user_count || 0}`}
-          hint={`${(counts.running || 0) + (counts.retrying || 0)} 进行中 · ${counts.failed || 0} 失败`}
         />
-        <Stat label="事件流" value={`#${snapshot.last_event_id ?? 0}`} hint={streamState} />
+        <Stat label="事件流" value={`#${snapshot.last_event_id ?? 0}`} />
       </Grid>
       <DayCycle day={snapshot.day} />
       <Grid columns={{ initial: "1", md: "2" }} gap="4">
-        <Panel title="需要关注的 Agent" hint="失败、重试中或带有错误记录的 Agent。点击查看决策流水线与 LLM 上下文。">
+        <Panel title="需要关注的 Agent">
           <AgentProgressBar agents={agents} />
           {attention.length ? (
             <Flex direction="column" gap="2" mt="3">
@@ -185,11 +182,11 @@ function ProgressTab({ run, snapshot, events, streamState, openAgent }) {
             </Flex>
           ) : (
             <Text as="p" size="2" color="gray" mt="3">
-              {agents.length ? "当前没有失败或重试的 Agent。" : "运行开始后这里会显示异常 Agent。"}
+              {agents.length ? "无" : "—"}
             </Text>
           )}
         </Panel>
-        <Panel title="最近事件" actions={<Badge color={streamState === "已连接" ? "green" : "gray"} variant="soft">{streamState}</Badge>}>
+        <Panel title="最近事件" actions={isActiveRun(run.status) && <Badge color={streamState === "已连接" ? "green" : "gray"} variant="soft">{streamState}</Badge>}>
           {events.length ? (
             <Flex direction="column" gap="1" className="event-list">
               {events.map((item) => (
@@ -208,7 +205,7 @@ function ProgressTab({ run, snapshot, events, streamState, openAgent }) {
             </Flex>
           ) : (
             <Text as="p" size="2" color="gray">
-              高层事件会在运行开始后出现。
+              —
             </Text>
           )}
         </Panel>
@@ -229,98 +226,6 @@ function ProgressTab({ run, snapshot, events, streamState, openAgent }) {
           </Grid>
         </Panel>
       )}
-    </Flex>
-  );
-}
-
-const RESULT_KINDS = [
-  ["summary", "每日汇总"],
-  ["trades", "成交明细"],
-  ["orders", "委托"],
-  ["agents", "Agent 结果"],
-  ["social", "社交"],
-];
-
-function ResultTable({ runId }) {
-  const [kind, setKind] = useState("summary");
-  const [state, setState] = useState({ data: null, error: "" });
-  useEffect(() => {
-    setState({ data: null, error: "" });
-    fetchJson(`/api/runs/${encodeURIComponent(runId)}/results/${kind}`)
-      .then((data) => setState({ data, error: "" }))
-      .catch((e) => setState({ data: null, error: e.message }));
-  }, [runId, kind]);
-  const items = state.data?.items || [];
-  const keys = items.length ? Object.keys(items[0]) : [];
-  const exportable = ["trades", "orders"].includes(kind);
-  return (
-    <Panel
-      title="结果数据表"
-      hint={`来源：${state.data?.source || "simulation artifacts"}。只读取真实产物，不做补全。`}
-      actions={
-        <>
-          <SegmentedControl.Root size="1" value={kind} onValueChange={setKind}>
-            {RESULT_KINDS.map(([id, label]) => (
-              <SegmentedControl.Item key={id} value={id}>
-                {label}
-              </SegmentedControl.Item>
-            ))}
-          </SegmentedControl.Root>
-          {exportable &&
-            ["csv", "json"].map((format) => (
-              <Button key={format} asChild size="1" variant="soft" color="gray">
-                <a href={`/api/runs/${encodeURIComponent(runId)}/results/${kind}/export?format=${format}`}>
-                  {icon(DownloadIcon, 12)} {format.toUpperCase()}
-                </a>
-              </Button>
-            ))}
-        </>
-      }
-    >
-      {state.error ? (
-        <Empty>暂无此类产物 · {state.error}</Empty>
-      ) : !state.data ? (
-        <Empty state={{ loading: true }} />
-      ) : items.length ? (
-        <div className="scroll-table">
-          <Table.Root size="1">
-            <Table.Header>
-              <Table.Row>
-                {keys.map((key) => (
-                  <Table.ColumnHeaderCell key={key}>{key}</Table.ColumnHeaderCell>
-                ))}
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {items.map((row, index) => (
-                <Table.Row key={index}>
-                  {keys.map((key) => (
-                    <Table.Cell key={key} className="clip-cell">
-                      {typeof row[key] === "object" && row[key] !== null ? JSON.stringify(row[key]) : String(row[key] ?? "—")}
-                    </Table.Cell>
-                  ))}
-                </Table.Row>
-              ))}
-            </Table.Body>
-          </Table.Root>
-        </div>
-      ) : (
-        <Empty>当前尚无此类真实产物。</Empty>
-      )}
-    </Panel>
-  );
-}
-
-function ResultsTab({ run, refresh }) {
-  return (
-    <Flex direction="column" gap="4">
-      {run.status !== "completed" && (
-        <Text size="2" color="gray">
-          实验{STATUS[run.status]?.[0] || run.status}，以下为截至目前已写入的产物。
-        </Text>
-      )}
-      <MarketChart run={run.run_id} refresh={refresh} />
-      <ResultTable runId={run.run_id} />
     </Flex>
   );
 }
@@ -351,8 +256,7 @@ function RuntimeLog({ runId, status }) {
   return (
     <Panel
       title="运行日志"
-      hint="仅显示经过后端脱敏的运行进度；运行期间每秒刷新。"
-      actions={<Badge color={isActiveRun(status) ? "green" : "gray"} variant="soft">{isActiveRun(status) ? "LIVE" : "ARCHIVE"}</Badge>}
+      actions={isActiveRun(status) && <Badge color="green" variant="soft">LIVE</Badge>}
     >
       <div className="terminal" role="log" aria-live="polite">
         <div className="terminal-command">$ twinmarket simulation --run {runId}</div>
@@ -396,7 +300,7 @@ function LogsTab({ run, snapshot, openAgent }) {
             ]}
           />
         </Panel>
-        <Panel title="诊断事件" hint="失败、重试与慢阶段事件。">
+        <Panel title="诊断事件">
           {diagnostics.length ? (
             <Flex direction="column" gap="2" className="event-list">
               {diagnostics.map((item) => (
@@ -419,7 +323,7 @@ function LogsTab({ run, snapshot, openAgent }) {
             </Flex>
           ) : (
             <Text size="2" color="gray">
-              当前没有失败、重试或慢阶段事件。
+              无
             </Text>
           )}
         </Panel>
@@ -490,7 +394,6 @@ function ConfigTab({ run, actions }) {
     <Grid columns={{ initial: "1", md: "2" }} gap="4" align="start">
       <Panel
         title="实验参数"
-        hint="创建时冻结；已启动的实验不能修改，可复制为新实验后调整。"
         actions={
           <Button size="1" variant="soft" color="gray" onClick={() => actions.duplicate(run)}>
             复制为新实验
@@ -522,17 +425,26 @@ function ConfigTab({ run, actions }) {
   );
 }
 
-export function Workspace({ runId, tab, agent, refresh }) {
+export function Workspace({ runId, tab, subview, agent, refresh }) {
   const { navigate } = useRouter();
   const { run, snapshot, error, reload } = useRunState(runId, refresh);
   const { events, streamState } = useRunEvents(runId);
   const actions = useRunActions(reload);
   const now = useNow(isActiveRun(run?.status));
   const base = `/studio/runs/${encodeURIComponent(runId)}`;
-  // 未指定 tab 时按状态选择：已完成看结果，其余看运行进度。
-  const current = tab || (run?.status === "completed" ? "results" : "progress");
-  const go = (next, query = "") => navigate(`${base}/${next}${query}`, { replace: true });
-  const openAgent = (id) => navigate(`${base}/agents${id ? `?agent=${encodeURIComponent(id)}` : ""}`);
+  // 未指定 tab 时按状态选择：已完成看分析，其余看运行进度。
+  const current = tab || (run?.status === "completed" ? "analysis" : "progress");
+  // Agent 弹窗叠在当前页面上，地址保留所在的分析子页。
+  const address = (next, view, id) => {
+    const query = new URLSearchParams();
+    if (next === "analysis" && view) query.set("view", view);
+    if (id) query.set("agent", id);
+    return `${base}/${next}${query.size ? `?${query}` : ""}`;
+  };
+  const go = (next) => navigate(address(next, subview), { replace: true });
+  const setView = (view) => navigate(address("analysis", view), { replace: true });
+  const openAgent = (id) => navigate(address(current, subview, id));
+  const closeAgent = () => navigate(address(current, subview), { replace: true });
 
   if (!run || !snapshot)
     return error ? <ErrorCallout>无法读取实验：{error}</ErrorCallout> : <Empty state={{ loading: true }} />;
@@ -548,9 +460,8 @@ export function Workspace({ runId, tab, agent, refresh }) {
             <StatusBadge value={run.status} size="2" />
             {run.health && run.health !== "healthy" && <StatusBadge value={run.health} size="2" />}
           </Flex>
-          <Text as="p" size="2" color="gray" mt="1">
-            ID {run.run_id} · {run.config.start_date} → {run.config.end_date} · {n(run.config.user_count)} Agents ·{" "}
-            {run.config.market_template ? `${run.config.market_template} · 数据版本 ${run.config.data_version}` : run.config.market_snapshot_id || "内置历史文件"} · 创建于 {stamp(run.created_at)}
+          <Text as="p" size="2" color="gray" mt="1" className="tabular">
+            {run.config.start_date} → {run.config.end_date} · {n(run.config.user_count)} Agents
           </Text>
         </Box>
         <Flex gap="2" align="center">
@@ -564,6 +475,14 @@ export function Workspace({ runId, tab, agent, refresh }) {
       </Flex>
       <ErrorCallout>{actions.error || (error ? `${error}，显示上次读取的数据` : null)}</ErrorCallout>
       {run.status === "failed" && <FailureBanner run={run} actions={actions} />}
+      {run.config.synthetic_demo && (
+        <Callout.Root color="amber" size="1" my="3">
+          <Callout.Icon>{icon(ExclamationTriangleIcon)}</Callout.Icon>
+          <Callout.Text>
+            合成示例数据：未调用模型，典型事实由构造产生，不代表研究结论。
+          </Callout.Text>
+        </Callout.Root>
+      )}
       <Tabs.Root value={current} onValueChange={(next) => go(next)}>
         <Tabs.List mb="4">
           {WORKSPACE_TABS.map(([id, label]) => (
@@ -579,21 +498,31 @@ export function Workspace({ runId, tab, agent, refresh }) {
         </Tabs.List>
       </Tabs.Root>
       {current === "progress" && <ProgressTab run={run} snapshot={snapshot} events={events} streamState={streamState} openAgent={openAgent} />}
-      {current === "agents" && (
-        <AgentExplorer
-          runId={runId}
-          runtime={snapshot}
+      {current === "analysis" && (
+        <AnalysisTab
+          run={run}
+          snapshot={snapshot}
           live={live}
           now={now}
-          timeout={run.config?.agent_timeout ?? 300}
-          selected={agent}
-          onSelect={(id) => go("agents", id ? `?agent=${encodeURIComponent(id)}` : "")}
+          view={subview}
+          onView={setView}
           refresh={refresh}
+          openAgent={openAgent}
         />
       )}
-      {current === "results" && <ResultsTab run={run} refresh={refresh} />}
       {current === "logs" && <LogsTab run={run} snapshot={snapshot} openAgent={openAgent} />}
       {current === "config" && <ConfigTab run={run} actions={actions} />}
+      {agent && (
+        <AgentDialog
+          key={agent}
+          runId={runId}
+          agentId={agent}
+          runtimeAgent={snapshot.agents?.find((item) => item.agent_id === agent) || null}
+          live={live}
+          now={now}
+          onClose={closeAgent}
+        />
+      )}
     </>
   );
 }

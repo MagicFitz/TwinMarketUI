@@ -13,6 +13,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from server.analysis import (
+    analysis_network,
+    analysis_polarization,
+    analysis_propagation,
+    analysis_stylized_facts,
+    analysis_trading,
+)
 from server.process_manager import ProcessManager
 from server.registry import ConflictError, NotFoundError, RunRegistry
 from server.results import (
@@ -428,6 +435,26 @@ def create_app(
     @app.get("/api/runs/{run_id}/results/social")
     def social(run_id: str):
         return results_social(_safe_run(registry.get(run_id), settings))
+
+    @app.get("/api/runs/{run_id}/analysis/propagation")
+    def propagation(run_id: str, date: str | None = None):
+        return analysis_propagation(_safe_run(registry.get(run_id), settings), date)
+
+    @app.get("/api/runs/{run_id}/analysis/network")
+    def network(run_id: str, date: str):
+        return analysis_network(_safe_run(registry.get(run_id), settings), date)
+
+    @app.get("/api/runs/{run_id}/analysis/trading")
+    def trading(run_id: str):
+        return analysis_trading(_safe_run(registry.get(run_id), settings))
+
+    @app.get("/api/runs/{run_id}/analysis/polarization")
+    def polarization(run_id: str):
+        return analysis_polarization(_safe_run(registry.get(run_id), settings))
+
+    @app.get("/api/runs/{run_id}/analysis/stylized-facts")
+    def stylized_facts(run_id: str):
+        return analysis_stylized_facts(_safe_run(registry.get(run_id), settings))
 
     @app.get("/api/runs/{run_id}/results/{kind}/export")
     def export_results(

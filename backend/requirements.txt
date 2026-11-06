@@ -9,3 +9,5 @@ pyyaml
 requests
 tqdm
 faiss-cpu
+scipy
+arch

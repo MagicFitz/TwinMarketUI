@@ -147,7 +147,7 @@ function Shell() {
             <main>
               {route.space === "Experiment" && route.view === "index" && <ExperimentList refresh={refresh} />}
               {route.space === "Experiment" && route.view === "new" && <NewExperiment from={route.from} />}
-              {route.view === "run" && <Workspace key={route.runId} runId={route.runId} tab={route.tab} agent={route.agent} refresh={refresh} />}
+              {route.view === "run" && <Workspace key={route.runId} runId={route.runId} tab={route.tab} subview={route.subview} agent={route.agent} refresh={refresh} />}
               {needsCatalog && !catalog.data && (
                 <Text as="p" color="gray" size="2" className="empty">
                   {catalog.error || "读取中…"}

@@ -41,6 +41,11 @@ a { color: inherit; }
 .disclosure summary { cursor: pointer; }
 .capability { min-width: 140px; }
 .price-chart { height: 240px; width: 100%; }
+.analysis-chart { width: 100%; }
+.subnav { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.scroll-table th, .scroll-table .tabular { white-space: nowrap; }
+.network-date { flex: none; }
+.analysis-excerpt { display: block; min-width: 240px; max-width: 520px; }
 .stat { min-width: 0; }
 
 /* ---------- 实验列表 ---------- */
@@ -77,10 +82,6 @@ a { color: inherit; }
 .terminal-prompt { color: #6e7681; margin-right: 8px; }
 
 /* ---------- Agent 浏览器（智能体空间与工作台共用） ---------- */
-.explorer { display: grid; gap: var(--space-4); align-items: start; }
-.explorer.has-detail { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
-.explorer-list { min-width: 0; }
-.agent-detail { position: sticky; top: 68px; max-height: calc(100vh - 88px); overflow: auto; min-width: 0; }
 .agent-table { white-space: nowrap; }
 .agent-table .clip { max-width: 260px; }
 .agent-progress { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: var(--gray-a4); }
@@ -158,8 +159,6 @@ a { color: inherit; }
   .workspace { margin-left: 196px; }
   .main { padding: 24px 24px 0; }
   .topbar { padding: 0 24px; }
-  .explorer.has-detail { grid-template-columns: 1fr; }
-  .agent-detail { position: static; max-height: none; }
 }
 @media (max-width: 760px) {
   /* 竖屏/移动端：主空间切换固定在底部导航栏。 */

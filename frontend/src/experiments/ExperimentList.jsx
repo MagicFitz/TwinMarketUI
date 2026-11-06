@@ -262,7 +262,6 @@ export function ExperimentList({ refresh }) {
   return (
     <>
       <PageHeader
-        description="点击实验进入工作台查看运行进度与结果。草稿可直接运行，运行中可停止，失败的实验可重试，已停止的实验可续跑，已完成的实验可直接查看结果。"
         actions={
           <Button onClick={() => navigate("/studio/Experiment/new")}>
             {icon(PlusIcon)} 创建实验

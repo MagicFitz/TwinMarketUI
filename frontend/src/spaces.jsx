@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Badge, Box, Button, Card, Flex, Grid, Heading, SegmentedControl, Table, Tabs, Text, Tooltip } from "@radix-ui/themes";
 import { n, useData } from "./lib.js";
 import { Definition, Empty, PageHeader, Panel, Stat } from "./ui.jsx";
-import { AgentExplorer } from "./agents/AgentExplorer.jsx";
+import { AgentDialog, AgentExplorer } from "./agents/AgentExplorer.jsx";
 import { MarketChart } from "./MarketChart.jsx";
 import { MarketWorkbench, TushareConnection } from "./MarketData.jsx";
 import { ModelSettings } from "./ModelSettings.jsx";
@@ -26,7 +26,6 @@ export function AgentSpace({ catalog, refresh }) {
       <PageHeader title="Agent 群体" actions={<PlannedButton variant="solid">创建群体</PlannedButton>} />
       <Panel
         title={g.name}
-        hint={`来源：${g.source}。本地模板，尚未注册独立群体版本。`}
         actions={
           <>
             <Badge color="gray" variant="soft">本地模板</Badge>
@@ -58,7 +57,8 @@ export function AgentSpace({ catalog, refresh }) {
         </Flex>
       </Panel>
       <Box mt="4">
-        <AgentExplorer runId="template" selected={selected} onSelect={setSelected} refresh={refresh} />
+        <AgentExplorer runId="template" onSelect={setSelected} refresh={refresh} />
+        {selected && <AgentDialog runId="template" agentId={selected} onClose={() => setSelected(null)} />}
       </Box>
     </>
   );
@@ -80,10 +80,10 @@ export function MarketSpace({ catalog, refresh }) {
       </Tabs.Root>
       {tab === "environment" && (
         <Flex direction="column" gap="4">
-          <Panel title="行业指数市场" hint="本地初始化数据库中的环境，尚未注册独立版本。" actions={<Badge color="gray" variant="soft">本地模板</Badge>}>
+          <Panel title="行业指数市场" actions={<Badge color="gray" variant="soft">本地模板</Badge>}>
             <Grid columns={{ initial: "1", sm: "2", md: "3" }} gap="4" align="center">
-              <Stat label="可交易资产" value={n(state.data?.assets.length)} hint="10 个行业指数，并非个股。" />
-              <Stat label="历史行情记录" value={n(catalog.market_range.records)} hint={`${catalog.market_range.start} — ${catalog.market_range.end}`} />
+              <Stat label="可交易资产" value={n(state.data?.assets.length)} />
+              <Stat label="历史行情记录" value={n(catalog.market_range.records)} />
               <Definition
                 values={[
                   ["机制", "日级最大成交量撮合"],
@@ -97,7 +97,7 @@ export function MarketSpace({ catalog, refresh }) {
         </Flex>
       )}
       {tab === "mechanisms" && (
-        <Panel title="内置撮合机制" hint="对应当前 matching_engine.py；旧运行未记录独立机制版本。">
+        <Panel title="内置撮合机制">
           <Definition
             values={[
               ["订单优先级", "价格优先、时间优先"],
@@ -109,7 +109,7 @@ export function MarketSpace({ catalog, refresh }) {
         </Panel>
       )}
       {tab === "assets" && (
-        <Panel title="行业指数包" hint="权重为模板原值，不等于成员的实际持仓。">
+        <Panel title="行业指数包">
           {state.data ? (
             <Table.Root size="2">
               <Table.Header>
@@ -149,17 +149,17 @@ export function SettingSpace({ compact, setCompact }) {
       <PageHeader title="设置" />
       <Flex direction="column" gap="4" className="settings">
         <section id="models">
-          <Panel title="模型连接" hint="OpenAI 兼容接口。API Key 只保存在本机配置文件中，页面不会读回明文。">
+          <Panel title="模型连接">
             <ModelSettings />
           </Panel>
         </section>
         <section id="sources">
-          <Panel title="金融数据源" hint="连接访问归设置；拉取、更新数据归市场。">
+          <Panel title="金融数据源">
             <TushareConnection />
           </Panel>
         </section>
         <section id="preferences">
-          <Panel title="界面偏好" hint="只保存到当前浏览器，不修改实验或系统配置。">
+          <Panel title="界面偏好">
             <Flex align="center" justify="between" gap="4">
               <Text size="2" weight="medium">
                 信息密度

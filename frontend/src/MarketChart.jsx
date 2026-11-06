@@ -1,23 +1,44 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Badge, Flex, Select, SegmentedControl, Table, Text } from "@radix-ui/themes";
+import { Flex, Select, SegmentedControl, Table, Text } from "@radix-ui/themes";
 import * as echarts from "echarts/core";
 import { LineChart } from "echarts/charts";
-import { GridComponent, TooltipComponent } from "echarts/components";
+import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { n, useData } from "./lib.js";
 import { Empty, Panel } from "./ui.jsx";
 
 // 按需注册 ECharts 模块，避免引入未使用的图表类型和渲染器。
-echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
 // ECharts 实例的创建、ResizeObserver 订阅和销毁都限定在同一个 effect 生命周期中。
-function PriceChart({ prices }) {
+function PriceChart({ prices, startDate }) {
   const el = useRef(null);
   useEffect(() => {
     const chart = echarts.init(el.current);
+    const area = {
+      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: "#12a59433" },
+        { offset: 1, color: "#12a59400" },
+      ]),
+    };
+    // 有起始日时，初始化历史和模拟结果分成两段，并在起始日前一点相接。
+    const first = startDate ? prices.findIndex((p) => p.date >= startDate) : 0;
+    const split = startDate && first > 0;
+    const close = (keep) => prices.map((p, index) => (keep(index) ? p.close_price : null));
+    const line = (name, color, data, extra = {}) => ({
+      name,
+      type: "line",
+      data,
+      showSymbol: false,
+      connectNulls: false,
+      itemStyle: { color },
+      lineStyle: { color, width: 2 },
+      ...extra,
+    });
     chart.setOption({
       animation: false,
-      grid: { left: 57, right: 20, top: 18, bottom: 30 },
+      grid: { left: 57, right: 20, top: split ? 34 : 18, bottom: 30 },
+      legend: split ? { top: 0, itemWidth: 14, itemHeight: 8, textStyle: { color: "#60646c", fontSize: 11 } } : undefined,
       tooltip: { trigger: "axis" },
       xAxis: {
         type: "category",
@@ -33,20 +54,12 @@ function PriceChart({ prices }) {
         axisLabel: { color: "#60646c", fontSize: 10 },
         splitLine: { lineStyle: { color: "#f0f0f3", type: "dashed" } },
       },
-      series: [
-        {
-          type: "line",
-          data: prices.map((p) => p.close_price),
-          showSymbol: false,
-          lineStyle: { color: "#12a594", width: 2 },
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: "#12a59433" },
-              { offset: 1, color: "#12a59400" },
-            ]),
-          },
-        },
-      ],
+      series: split
+        ? [
+            line("初始化历史", "#3e63dd", close((index) => index < first)),
+            line("模拟结果", "#12a594", close((index) => index >= first - 1), { areaStyle: area }),
+          ]
+        : [line("收盘价", "#12a594", close(() => true), { areaStyle: area })],
     });
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(el.current);
@@ -54,13 +67,13 @@ function PriceChart({ prices }) {
       observer.disconnect();
       chart.dispose();
     };
-  }, [prices]);
+  }, [prices, startDate]);
   return (
     <div
       ref={el}
       className="price-chart"
       role="img"
-      aria-label={`收盘价曲线，共 ${prices.length} 个观测点；可切换数据表读取数值`}
+      aria-label={`收盘价曲线，共 ${prices.length} 个观测点`}
     />
   );
 }
@@ -71,7 +84,7 @@ const SERVICE = "__service__";
 
 // 行情组件支持在图表和可读取的表格间切换，二者共用同一份 API 数据。
 // selectSource 时可在内置历史文件与市场数据服务（最新数据版本）之间切换；服务可用时默认读取服务。
-export function MarketChart({ run = "template", refresh = 0, selectSource = false }) {
+export function MarketChart({ run = "template", refresh = 0, selectSource = false, startDate = null }) {
   const [asset, setAsset] = useState("");
   const [view, setView] = useState("chart");
   const [picked, setPicked] = useState(null);
@@ -87,7 +100,7 @@ export function MarketChart({ run = "template", refresh = 0, selectSource = fals
   const state = useData(url, refresh);
   if (!state.data)
     return (
-      <Panel title="行情观察">
+      <Panel title="行情">
         <Empty state={state} />
       </Panel>
     );
@@ -95,8 +108,7 @@ export function MarketChart({ run = "template", refresh = 0, selectSource = fals
     last = d.prices.at(-1);
   return (
     <Panel
-      title="行情观察"
-      hint={`${d.source}，最近 ${d.prices.length} 个观测点。包含初始化历史；非实时交易报价，使用收盘价而非 OHLC。`}
+      title="行情"
       actions={
         <>
           {selectSource && health.data && (
@@ -134,12 +146,9 @@ export function MarketChart({ run = "template", refresh = 0, selectSource = fals
         <Text size="6" weight="bold" className="tabular">
           {n(last?.close_price)}
         </Text>
-        <Text size="1" color="gray">
-          收盘价
+        <Text size="2" color="gray" className="tabular">
+          {last?.date || "—"}
         </Text>
-        <Badge color="gray" variant="soft">
-          截至 {last?.date || "—"}
-        </Badge>
       </Flex>
       {view === "table" ? (
         <div className="scroll-table">
@@ -165,7 +174,7 @@ export function MarketChart({ run = "template", refresh = 0, selectSource = fals
           </Table.Root>
         </div>
       ) : (
-        <PriceChart prices={d.prices} />
+        <PriceChart prices={d.prices} startDate={startDate} />
       )}
     </Panel>
   );

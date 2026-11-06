@@ -7,14 +7,9 @@ import {
   DataList,
   Flex,
   Heading,
-  IconButton,
   Text,
-  Tooltip,
 } from "@radix-ui/themes";
-import {
-  ExclamationTriangleIcon,
-  QuestionMarkCircledIcon,
-} from "@radix-ui/react-icons";
+import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { STATUS } from "./lib.js";
 
 /*
@@ -36,23 +31,6 @@ export function StatusBadge({ value, size = "1" }) {
     <Badge color={color} variant="soft" size={size} radius="full">
       {label}
     </Badge>
-  );
-}
-
-// 说明文字收进问号提示，页面主体只保留数据。
-export function Hint({ children, label = "查看说明" }) {
-  return (
-    <Tooltip content={children}>
-      <IconButton
-        variant="ghost"
-        color="gray"
-        size="1"
-        radius="full"
-        aria-label={label}
-      >
-        {icon(QuestionMarkCircledIcon, 14)}
-      </IconButton>
-    </Tooltip>
   );
 }
 
@@ -80,17 +58,14 @@ export function PageHeader({ title, description, actions }) {
   );
 }
 
-export function Panel({ title, hint, actions, children, className = "" }) {
+export function Panel({ title, actions, children, className = "" }) {
   return (
     <Card size="2" className={`panel ${className}`}>
       {(title || actions) && (
         <Flex align="center" justify="between" gap="3" wrap="wrap" mb="3">
-          <Flex align="center" gap="1">
-            <Heading as="h2" size="3">
-              {title}
-            </Heading>
-            {hint && <Hint label={`${title}说明`}>{hint}</Hint>}
-          </Flex>
+          <Heading as="h2" size="3">
+            {title}
+          </Heading>
           {actions && (
             <Flex gap="2" align="center" wrap="wrap">
               {actions}
@@ -144,15 +119,12 @@ export function Definition({ values, size = "2" }) {
   );
 }
 
-export function Stat({ label, value, hint }) {
+export function Stat({ label, value }) {
   return (
     <Card size="2" className="stat">
-      <Flex align="center" gap="1">
-        <Text size="1" color="gray">
-          {label}
-        </Text>
-        {hint && <Hint label={`${label}口径`}>{hint}</Hint>}
-      </Flex>
+      <Text size="1" color="gray">
+        {label}
+      </Text>
       <Text as="div" size="5" weight="bold" mt="1" className="tabular">
         {value}
       </Text>

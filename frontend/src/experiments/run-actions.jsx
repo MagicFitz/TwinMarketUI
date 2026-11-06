@@ -71,7 +71,7 @@ export function RunResultButton({ run, size = "2" }) {
   const { navigate } = useRouter();
   if (run.status !== "completed") return null;
   return (
-    <Button size={size} variant="soft" color="iris" onClick={() => navigate(`/studio/runs/${encodeURIComponent(run.run_id)}/results`)}>
+    <Button size={size} variant="soft" color="iris" onClick={() => navigate(`/studio/runs/${encodeURIComponent(run.run_id)}/analysis`)}>
       {icon(BarChartIcon, size === "1" ? 12 : 14)}
       结果
     </Button>

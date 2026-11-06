@@ -395,6 +395,30 @@ def save_graph(
         return False
 
 
+def save_graph_json(G: nx.Graph, filename: str, output_dir: str = "data/") -> bool:
+    """Save a graph's topology as JSON so services can read it without unpickling."""
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+        path = os.path.join(output_dir, f"{filename}.json")
+        temporary = f"{path}.tmp"
+        with open(temporary, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "nodes": [str(node) for node in G.nodes],
+                    "edges": [
+                        [str(left), str(right), float(data.get("weight", 0.0))]
+                        for left, right, data in G.edges(data=True)
+                    ],
+                },
+                f,
+            )
+        os.replace(temporary, path)
+        return True
+    except Exception as e:
+        print(f"Error saving graph JSON: {e}")
+        return False
+
+
 def load_graph(
     filename: str, input_dir: str = "data/", format: str = "pickle"
 ) -> Optional[nx.Graph]:
@@ -526,6 +550,7 @@ def build_graph(
         # 保存图
         if save:
             save_graph(G=G, filename=save_name, output_dir=output_dir, format="pickle")
+            save_graph_json(G=G, filename=save_name, output_dir=output_dir)
 
         return G
 
@@ -731,6 +756,7 @@ def build_graph_new(
         # 保存图
         if save:
             save_graph(G=G, filename=save_name, output_dir=output_dir, format="pickle")
+            save_graph_json(G=G, filename=save_name, output_dir=output_dir)
 
         return G
 

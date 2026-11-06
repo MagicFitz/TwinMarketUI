@@ -106,7 +106,7 @@ export function LLMContext({runId, agentId, live}) {
 
   if (error && !data) return <Text as="p" size="2" color="red">读取失败：{error}</Text>;
   if (!data) return <Text as="p" size="2" color="gray">读取中…</Text>;
-  if (!record) return <Text as="p" size="2" color="gray">这个 Agent 在 {data.date || '当前日期'} 还没有 LLM 调用记录。未激活的 Agent 不调用 LLM。</Text>;
+  if (!record) return <Text as="p" size="2" color="gray">{data.date || '当前日期'} 没有 LLM 调用</Text>;
   return <div className="ctx-inspector">
     <div className="ctx-summary">
       <div><span>LLM 调用</span><strong>{record.calls.length} 次</strong></div>
@@ -121,9 +121,8 @@ export function LLMContext({runId, agentId, live}) {
       {attempts.length > 1 && <SegmentedControl.Root size="1" value={String(attemptIndex < 0 ? attempts.length - 1 : attemptIndex)} onValueChange={value => setAttemptIndex(Number(value))}>
         {attempts.map((item, index) => <SegmentedControl.Item key={item.attempt} value={String(index)}>第 {item.attempt} 次尝试</SegmentedControl.Item>)}
       </SegmentedControl.Root>}
-      <span className="ctx-legend"><i className="role-system"/>系统 <i className="role-user"/>用户 <i className="role-assistant"/>模型 <i className="output"/>输出上限 · 实色为本次新增</span>
+      <span className="ctx-legend"><i className="role-system"/>系统 <i className="role-user"/>用户 <i className="role-assistant"/>模型 <i className="output"/>输出上限</span>
     </div>
-    <p className="ctx-note">Token 为本地估算（中文约 1 token/字），“实际”来自模型服务返回的 prompt_tokens。</p>
     {record.calls.map(call => <CallRow key={call.seq} call={call} record={record}
       open={openSeq === call.seq} onToggle={() => setOpenSeq(value => value === call.seq ? null : call.seq)}/>)}
   </div>;

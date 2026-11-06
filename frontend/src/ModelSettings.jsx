@@ -182,7 +182,7 @@ function ModelForm({ kind, title, description, saved, onSaved }) {
             </Select.Root>
           </Field>
         )}
-        <Field label="Base URL" hint={kind === "language" ? "例如 https://api.openai.com/v1" : undefined}>
+        <Field label="Base URL">
           <TextField.Root required type="url" value={form.base_url} onChange={change("base_url")} placeholder="https://api.openai.com/v1" aria-label={`${title} Base URL`} />
         </Field>
         <Field label="API Key" hint={saved.api_key_configured ? "已配置；留空保持不变。" : "本地服务可留空。"}>
@@ -198,7 +198,7 @@ function ModelForm({ kind, title, description, saved, onSaved }) {
         <Field label="模型名称">
           <TextField.Root required value={form.model_name} onChange={change("model_name")} placeholder={kind === "language" ? "gpt-4o-mini" : "text-embedding-3-small"} aria-label={`${title}模型名称`} />
         </Field>
-        <Field label="超时（秒）" hint="测试时最多等待 60 秒。">
+        <Field label="超时（秒）">
           <TextField.Root type="number" min="0" value={form.timeout} onChange={change("timeout")} aria-label={`${title}超时`} />
         </Field>
         {kind === "embedding" && (

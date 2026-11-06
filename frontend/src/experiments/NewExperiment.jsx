@@ -55,18 +55,13 @@ function Field({ label, hint, children }) {
   );
 }
 
-function Section({ title, description, children }) {
+function Section({ title, children }) {
   return (
     <Grid columns={{ initial: "1", md: "220px 1fr" }} gap={{ initial: "3", md: "6" }} py="5">
       <Box>
         <Heading as="h2" size="3">
           {title}
         </Heading>
-        {description && (
-          <Text as="p" size="1" color="gray" mt="1">
-            {description}
-          </Text>
-        )}
       </Box>
       <Flex direction="column" gap="4" minWidth="0">
         {children}
@@ -168,15 +163,10 @@ export function NewExperiment({ from }) {
     <form onSubmit={submit} className="new-experiment">
       <PageHeader
         title="新建实验"
-        description={
-          source
-            ? `基于“${source.name}”的配置创建，可修改后再提交。`
-            : "创建后会冻结非敏感参数与输入文件指纹，并进入实验工作台；需要你再点击“运行”才会开始模拟。"
-        }
       />
       <Card size="3">
-        <Section title="基本信息" description="别名会显示在实验列表和面包屑中。">
-          <Field label="实验别名" hint="别名可以重名；实验 ID 会在创建时按时间自动生成，作为唯一标识。">
+        <Section title="基本信息">
+          <Field label="实验别名">
             <TextField.Root required value={form.name} placeholder="实验 1" onChange={(e) => change("name", e.target.value)} />
           </Field>
           <Field label="描述（可选）">
@@ -184,7 +174,7 @@ export function NewExperiment({ from }) {
           </Field>
         </Section>
         <Separator size="4" />
-        <Section title="规模与日期" description="模拟区间按交易日推进，休市日会被跳过。">
+        <Section title="规模与日期">
           <Grid columns={{ initial: "1", sm: "2" }} gap="4">
             <Field label="Agent 数量">
               <TextField.Root required type="number" min="1" max="1000" value={form.user_count} onChange={number("user_count")} />
@@ -202,7 +192,7 @@ export function NewExperiment({ from }) {
           {invalidDates && <ErrorCallout>结束日期不能早于起始日期。</ErrorCallout>}
         </Section>
         <Separator size="4" />
-        <Section title="市场环境" description="选择市场模板。创建时固定模板版本与数据版本，并把冻结的数据包拉取到实验目录，之后更新市场数据不影响本实验。">
+        <Section title="市场环境">
           <RunMarketTemplate
             value={form.market_template}
             onChange={pickTemplate}
@@ -213,7 +203,7 @@ export function NewExperiment({ from }) {
           />
         </Section>
         <Separator size="4" />
-        <Section title="高级参数" description="影响 Agent 激活与决策的随机性。">
+        <Section title="高级参数">
           <Box>
             <Button type="button" variant="ghost" color="gray" onClick={() => setAdvanced((v) => !v)} aria-expanded={advanced}>
               {icon(advanced ? ChevronDownIcon : ChevronRightIcon)}
@@ -222,7 +212,7 @@ export function NewExperiment({ from }) {
           </Box>
           {advanced && (
             <Grid columns={{ initial: "1", sm: "2" }} gap="4">
-              <Field label="激活概率" hint="每个交易日被激活参与决策的 Agent 比例。">
+              <Field label="激活概率">
                 <TextField.Root type="number" min="0" max="1" step="0.05" value={form.activate_prob} onChange={number("activate_prob")} />
               </Field>
               <Field label="技术面概率">
