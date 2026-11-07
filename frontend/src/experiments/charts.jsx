@@ -1,11 +1,11 @@
 import React, { useEffect, useRef } from "react";
 import { Button, Table } from "@radix-ui/themes";
 import * as echarts from "echarts/core";
-import { BarChart, GraphChart, LineChart, ScatterChart } from "echarts/charts";
+import { BarChart, GraphChart, LineChart, PieChart, ScatterChart } from "echarts/charts";
 import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 
-echarts.use([BarChart, GraphChart, LineChart, ScatterChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([BarChart, GraphChart, LineChart, PieChart, ScatterChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
 // 颜色由实体决定：模拟结果、初始化历史和参考线在所有图中保持一致。
 // 这组颜色已通过 dataviz 校验（all-pairs）；对比度不足的部分由图例和统计表补足。

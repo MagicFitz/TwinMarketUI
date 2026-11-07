@@ -25,7 +25,7 @@ export function parseRoute(pathname, search = "") {
   const [, , space, sub] = pathname.split("/");
   if (space === "Experiment" && sub === "new")
     return { space, view: "new", from: query.get("from") };
-  return { space: space || "Experiment", view: "index" };
+  return { space: space || "Experiment", view: "index", subview: query.get("view") };
 }
 
 export function RouterProvider({ children }) {

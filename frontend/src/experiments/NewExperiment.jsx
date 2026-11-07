@@ -6,7 +6,7 @@ import { ErrorCallout, Notice, PageHeader, icon } from "../ui.jsx";
 import { useRouter } from "../router.jsx";
 import { RunMarketTemplate } from "../MarketData.jsx";
 
-const DEFAULTS = {
+export const DEFAULTS = {
   name: "",
   description: "",
   user_count: 10,

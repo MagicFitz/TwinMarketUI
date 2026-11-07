@@ -150,10 +150,41 @@ function Profile({ runId, agentId }) {
   );
 }
 
+const PROMPT_FIELDS = [
+  ["prompt", "交易人设"],
+  ["sys_prompt", "简要人设"],
+  ["self_description", "自我描述"],
+];
+
+function Prompts({ runId, agentId }) {
+  const state = useData(`/api/runs/${encodeURIComponent(runId)}/agents/${encodeURIComponent(agentId)}`);
+  if (!state.data) return <Empty state={state}>{state.error ? "该 Agent 暂无档案。" : undefined}</Empty>;
+  const fields = PROMPT_FIELDS.filter(([key]) => state.data[key]);
+  if (!fields.length) return <Empty>该 Agent 没有记录画像提示词。</Empty>;
+  return (
+    <Flex direction="column" gap="4">
+      {fields.map(([key, label]) => (
+        <Box key={key}>
+          <Flex align="center" gap="2" mb="2">
+            <Text size="2" weight="medium">
+              {label}
+            </Text>
+            <Code size="1" color="gray" variant="ghost">
+              {key}
+            </Code>
+          </Flex>
+          <pre className="code-block pre-wrap">{state.data[key]}</pre>
+        </Box>
+      ))}
+    </Flex>
+  );
+}
+
 export function AgentDialog({ runId, agentId, runtimeAgent = null, live = false, now = Date.now(), onClose }) {
   const hasRun = runId !== "template";
   const tabs = [
     ["profile", "档案"],
+    ["prompts", "提示词"],
     ...(hasRun ? [["context", "上下文"]] : []),
     ...(runtimeAgent ? [["pipeline", "流水线"]] : []),
   ];
@@ -188,6 +219,7 @@ export function AgentDialog({ runId, agentId, runtimeAgent = null, live = false,
         ) : null}
         <Box pt="3">
           {tab === "profile" && <Profile runId={runId} agentId={agentId} />}
+          {tab === "prompts" && <Prompts runId={runId} agentId={agentId} />}
           {tab === "context" && <LLMContext runId={runId} agentId={agentId} live={live} />}
           {tab === "pipeline" && runtimeAgent && <Pipeline agent={runtimeAgent} now={now} />}
         </Box>

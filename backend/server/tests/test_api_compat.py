@@ -37,7 +37,10 @@ def create_fixture_settings(root: Path) -> Settings:
                 user_id TEXT, user_type TEXT, location TEXT, gender TEXT,
                 bh_disposition_effect_category TEXT, bh_lottery_preference_category TEXT,
                 bh_underdiversification_category TEXT, current_cash REAL,
-                total_value REAL, return_rate REAL, cur_positions TEXT, created_at TEXT
+                total_value REAL, return_rate REAL, cur_positions TEXT, created_at TEXT,
+                bh_annual_turnover_category TEXT, trade_count_category TEXT,
+                bh_total_return_category TEXT, sys_prompt TEXT, prompt TEXT,
+                self_description TEXT, fol_ind TEXT, ini_cash REAL
             );
             CREATE TABLE Strategy (user_id TEXT, strategy TEXT);
             CREATE TABLE StockProfile (
@@ -47,7 +50,11 @@ def create_fixture_settings(root: Path) -> Settings:
             """
         )
         connection.execute(
-            "INSERT INTO Profiles VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            """INSERT INTO Profiles (
+                user_id, user_type, location, gender, bh_disposition_effect_category,
+                bh_lottery_preference_category, bh_underdiversification_category, current_cash,
+                total_value, return_rate, cur_positions, created_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
             ("1", "retail", "Shanghai", "F", "low", "low", "low", 100.0, 110.0, 0.1, "{}", "2023-06-15"),
         )
         connection.execute("INSERT INTO Strategy VALUES(?, ?)", ("1", "hold"))
@@ -137,6 +144,46 @@ class ApiCompatibilityTests(unittest.TestCase):
         self.assertEqual(market.status_code, 200)
         self.assertEqual(set(market.json()), {"assets", "selected", "prices", "source"})
         self.assertEqual(market.json()["selected"], "000001")
+
+    def test_agent_distribution_and_prompts_use_the_earliest_snapshot(self):
+        columns = (
+            "user_id, user_type, location, gender, bh_disposition_effect_category, "
+            "bh_lottery_preference_category, bh_underdiversification_category, bh_annual_turnover_category, "
+            "trade_count_category, bh_total_return_category, sys_prompt, prompt, self_description, "
+            "fol_ind, ini_cash, current_cash, total_value, return_rate, cur_positions, created_at"
+        )
+        holding = json.dumps({"000001": {"shares": 100, "ratio": 75.0}, "UNKNOWN": {"shares": 0, "ratio": 0}})
+        rows = [
+            ("2", "大V", "北京", "男", "高", "低", "中", "低", "中", "高", "短", "长", "述",
+             '["金融", "科技"]', 1000.0, 250.0, 1000.0, 0.0, holding, "2023-01-01"),
+            # 后续快照：提示词为空、资产已变化，不能影响画像和初始统计。
+            ("2", "大V", "北京", "男", "高", "低", "中", "低", "中", "高", "", "", "",
+             '["金融", "科技"]', 1000.0, 1000.0, 1000.0, 0.0, "{}", "2023-01-02"),
+            ("3", "普通股民", "北京", "", "低", "低", "中", "低", "中", "高", "", "", "",
+             "not json", 5000.0, 5000.0, 5000.0, 0.0, "not json", "2023-01-01"),
+        ]
+        with sqlite3.connect(self.settings.data_dir / "sys_1000.db") as connection:
+            connection.execute("DELETE FROM Profiles")
+            connection.executemany(f"INSERT INTO Profiles ({columns}) VALUES ({','.join('?' * 20)})", rows)
+            connection.execute("INSERT INTO Strategy VALUES(?, ?)", ("2", "技术面"))
+
+        response = self.client.get("/api/runs/template/agents/distribution")
+        self.assertEqual(response.status_code, 200)
+        stats = response.json()
+        self.assertEqual(stats["total"], 2)
+        self.assertEqual(stats["location"], [{"name": "北京", "value": 2}])
+        self.assertEqual(stats["gender"], [{"name": "未知", "value": 1}, {"name": "男", "value": 1}])
+        self.assertEqual(stats["strategy"], [{"name": "技术面", "value": 1}, {"name": "未知", "value": 1}])
+        self.assertEqual(stats["initial_cash"], [{"name": 1000.0, "value": 1}, {"name": 5000.0, "value": 1}])
+        self.assertEqual(stats["holdings"], [{"name": "Fixture", "value": 1}])
+        self.assertEqual(stats["industries"], [{"name": "科技", "value": 1}, {"name": "金融", "value": 1}])
+        exposure = {item["name"]: item["value"] for item in stats["exposure"]}
+        self.assertEqual((exposure["0–20%"], exposure["60–80%"], sum(exposure.values())), (1, 1, 2))
+        self.assertEqual(stats["behaviors"][0], {"name": "处置效应", "低": 1, "中": 0, "高": 1})
+
+        detail = self.client.get("/api/runs/template/agents/2").json()
+        self.assertEqual((detail["sys_prompt"], detail["prompt"], detail["self_description"]), ("短", "长", "述"))
+        self.assertEqual(detail["current_cash"], 1000.0)
 
     def test_model_settings_can_be_updated_without_returning_api_keys(self):
         initial = self.client.get("/api/settings/models")

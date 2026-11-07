@@ -218,6 +218,11 @@ def create_app(
     def legacy_agents(run_id: str, q: str = "", page: int = Query(1, ge=1)):
         return agent_service.members(run_id, q, page, registered_output_dir(run_id))
 
+    # 必须注册在 /agents/{agent_id} 之前，否则 distribution 会被当作 Agent ID。
+    @app.get("/api/runs/{run_id}/agents/distribution")
+    def agent_distribution(run_id: str):
+        return agent_service.distribution(run_id, registered_output_dir(run_id))
+
     @app.get("/api/runs/{run_id}/agents/{agent_id}")
     def legacy_agent_detail(run_id: str, agent_id: str):
         return agent_service.member_detail(run_id, agent_id, registered_output_dir(run_id))

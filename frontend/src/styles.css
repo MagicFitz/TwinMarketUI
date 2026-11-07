@@ -42,6 +42,10 @@ a { color: inherit; }
 .capability { min-width: 140px; }
 .price-chart { height: 240px; width: 100%; }
 .analysis-chart { width: 100%; }
+.pie-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+.pie-row { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.pie-name { flex: 1; min-width: 0; }
+.behavior-pie { min-width: 0; text-align: center; }
 .subnav { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .scroll-table th, .scroll-table .tabular { white-space: nowrap; }
 .network-date { flex: none; }

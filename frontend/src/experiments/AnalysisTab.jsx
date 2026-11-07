@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Button, Flex, Grid, SegmentedControl, Slider, Text } from "@radix-ui/themes";
 import { DownloadIcon } from "@radix-ui/react-icons";
 import { fetchJson, useData } from "../lib.js";
+import { AgentDistribution } from "../agents/AgentDistribution.jsx";
 import { AgentExplorer } from "../agents/AgentExplorer.jsx";
 import { MarketChart } from "../MarketChart.jsx";
 import { Empty, Panel, Stat, icon } from "../ui.jsx";
@@ -454,6 +455,7 @@ export function AnalysisTab({ run, snapshot, live, now, view, onView, refresh, o
       {current === "propagation" && <PropagationView runId={runId} refresh={refresh} openAgent={openAgent} />}
       {current === "stylized" && <StylizedView runId={runId} refresh={refresh} />}
       {current === "polarization" && <PolarizationView runId={runId} refresh={refresh} />}
+      {current === "agents" && <AgentDistribution runId={runId} refresh={refresh} />}
       {current === "agents" && (
         <AgentExplorer
           runId={runId}

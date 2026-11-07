@@ -3,9 +3,12 @@ import { Badge, Box, Button, Card, Flex, Grid, Heading, SegmentedControl, Table,
 import { n, useData } from "./lib.js";
 import { Definition, Empty, PageHeader, Panel, Stat } from "./ui.jsx";
 import { AgentDialog, AgentExplorer } from "./agents/AgentExplorer.jsx";
+import { AgentDistribution } from "./agents/AgentDistribution.jsx";
 import { MarketChart } from "./MarketChart.jsx";
 import { MarketWorkbench, TushareConnection } from "./MarketData.jsx";
 import { ModelSettings } from "./ModelSettings.jsx";
+import { DEFAULTS } from "./experiments/NewExperiment.jsx";
+import { useRouter } from "./router.jsx";
 
 // 尚未开放的写操作：保持可聚焦，用 Tooltip 说明原因。
 function PlannedButton({ children, variant = "soft" }) {
@@ -18,48 +21,88 @@ function PlannedButton({ children, variant = "soft" }) {
   );
 }
 
-export function AgentSpace({ catalog, refresh }) {
-  const g = catalog.group;
-  const [selected, setSelected] = useState(null);
+// 依据论文附录 D（arXiv:2502.01506）。
+const PERSONA_INTRO =
+  "LLM 投资者群体以真实交易行为为基础构建：先从雪球 639 名用户的 11,965 条交易记录中估计处置效应、彩票偏好、投资集中度和换手率，再为每个投资者配置性别、地域和关注者规模，并把各项行为偏差的高、中、低等级写入系统提示词。GPT-4o 依据整体理性程度划分风格，前 40% 为基本面投资者，其余为技术面投资者；理性程度最高的一部分获得十倍初始资金。初始持仓由随机选取的真实投资者匿名交易模式采样生成。";
+
+const AGENT_VIEWS = [
+  ["distribution", "群体分布"],
+  ["list", "列表"],
+  ["workbench", "配置工作台"],
+];
+
+function AgentWorkbench({ group }) {
+  const { navigate } = useRouter();
+  const percent = (value) => `${Math.round(value * 100)}%`;
   return (
-    <>
-      <PageHeader title="Agent 群体" actions={<PlannedButton variant="solid">创建群体</PlannedButton>} />
+    <Flex direction="column" gap="4">
       <Panel
-        title={g.name}
+        title="当前群体"
         actions={
           <>
-            <Badge color="gray" variant="soft">本地模板</Badge>
             <PlannedButton>行为金融测试</PlannedButton>
+            <PlannedButton variant="solid">创建群体</PlannedButton>
           </>
         }
       >
-        <Flex align="center" gap="6" wrap="wrap">
-          <Box>
-            <Text size="8" weight="bold" className="tabular">
-              {n(g.users)}
-            </Text>
-            <Text size="2" color="gray" ml="2">
-              位投资者
-            </Text>
-          </Box>
-          <Flex gap="5" wrap="wrap">
-            {g.distributions.map((d) => (
-              <Box key={d.name}>
-                <Text as="div" size="1" color="gray">
-                  {d.name}
-                </Text>
-                <Text size="3" weight="medium" className="tabular">
-                  {n(d.value)}
-                </Text>
-              </Box>
-            ))}
-          </Flex>
-        </Flex>
+        <Definition
+          values={[
+            ["名称", group.name],
+            ["成员", `${n(group.users)} 位投资者`],
+            ["数据来源", group.source],
+            ["状态", group.status],
+          ]}
+        />
       </Panel>
-      <Box mt="4">
-        <AgentExplorer runId="template" onSelect={setSelected} refresh={refresh} />
-        {selected && <AgentDialog runId="template" agentId={selected} onClose={() => setSelected(null)} />}
-      </Box>
+      <Panel
+        title="实验默认参数"
+        actions={
+          <Button variant="soft" color="gray" onClick={() => navigate("/studio/Experiment/new")}>
+            新建实验
+          </Button>
+        }
+      >
+        <Definition
+          values={[
+            ["Agent 数量", n(DEFAULTS.user_count)],
+            ["激活概率", percent(DEFAULTS.activate_prob)],
+            ["技术面概率", percent(DEFAULTS.prob_of_technical)],
+            ["并发 Worker", n(DEFAULTS.max_workers)],
+            ["Agent 超时", `${DEFAULTS.agent_timeout} 秒`],
+            ["随机种子", DEFAULTS.random_seed],
+          ]}
+        />
+        <Text as="p" size="1" color="gray" mt="3">
+          这里只读，新建实验时可逐项调整。
+        </Text>
+      </Panel>
+    </Flex>
+  );
+}
+
+export function AgentSpace({ catalog, refresh }) {
+  const g = catalog.group;
+  const { route, navigate } = useRouter();
+  const view = AGENT_VIEWS.some(([id]) => id === route.subview) ? route.subview : AGENT_VIEWS[0][0];
+  const [selected, setSelected] = useState(null);
+  return (
+    <>
+      <PageHeader description={PERSONA_INTRO} />
+      <Tabs.Root value={view} onValueChange={(id) => navigate(`/studio/Agent?view=${id}`, { replace: true })}>
+        <Tabs.List mb="4">
+          {AGENT_VIEWS.map(([id, label]) => (
+            <Tabs.Trigger key={id} value={id}>
+              {label}
+            </Tabs.Trigger>
+          ))}
+        </Tabs.List>
+      </Tabs.Root>
+      {view === "distribution" && (
+        <AgentDistribution runId="template" title={`${g.name} · ${n(g.users)} 位投资者`} refresh={refresh} />
+      )}
+      {view === "list" && <AgentExplorer runId="template" onSelect={setSelected} refresh={refresh} />}
+      {view === "workbench" && <AgentWorkbench group={g} />}
+      {selected && <AgentDialog runId="template" agentId={selected} onClose={() => setSelected(null)} />}
     </>
   );
 }
