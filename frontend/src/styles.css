@@ -72,8 +72,8 @@ a { color: inherit; }
 .new-experiment { max-width: 980px; }
 
 /* ---------- 工作台 ---------- */
-.day-step.running, .pipeline-step.running, .pipeline-step.retrying { box-shadow: inset 0 0 0 1px var(--blue-8); }
-.day-step.failed, .pipeline-step.failed { box-shadow: inset 0 0 0 1px var(--red-8); }
+.day-step.running { box-shadow: inset 0 0 0 1px var(--blue-8); }
+.day-step.failed { box-shadow: inset 0 0 0 1px var(--red-8); }
 .list-button { display: block; width: 100%; padding: 8px 10px; text-align: left; font: inherit; color: inherit; background: none; border: 1px solid transparent; border-radius: var(--radius-3); cursor: pointer; }
 .list-button:hover:not(:disabled) { background: var(--gray-a3); }
 .list-button:disabled { cursor: default; }
@@ -94,7 +94,30 @@ a { color: inherit; }
 .agent-progress .running { background: var(--blue-9); }
 .agent-progress .retrying { background: var(--amber-9); }
 .agent-progress .failed { background: var(--red-9); }
-.pipeline { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-2); }
+
+/* ---------- BDI 时间线 ---------- */
+.bdi-matrix { display: flex; gap: 8px; }
+.bdi-labels { flex: none; display: grid; grid-template-rows: 18px repeat(3, 26px); gap: 3px; padding-top: 4px; font-size: 12px; color: var(--gray-11); }
+.bdi-labels span { display: flex; align-items: center; }
+.bdi-days { display: flex; gap: 2px; min-width: 0; overflow-x: auto; padding-bottom: 6px; }
+.bdi-day { flex: none; display: grid; grid-template-rows: 18px repeat(3, 26px); gap: 3px; width: 42px; padding: 4px 3px; border: 0; border-radius: var(--radius-2); background: none; font: inherit; color: inherit; cursor: pointer; }
+.bdi-day:hover { background: var(--gray-a3); }
+.bdi-day[aria-pressed="true"] { background: var(--teal-a4); box-shadow: inset 0 0 0 1px var(--teal-8); }
+.bdi-day:focus-visible { outline: 2px solid var(--teal-8); outline-offset: 1px; }
+.bdi-day time { font-size: 10px; line-height: 18px; color: var(--gray-11); font-variant-numeric: tabular-nums; }
+.bdi-day.is-failed time { color: var(--red-11); font-weight: 600; }
+.bdi-cell { position: relative; display: flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 12px; font-style: normal; font-weight: 500; }
+.bdi-cell.is-changed { box-shadow: 0 0 0 2px var(--gray-12); }
+.bdi-post { position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 50%; background: #d99a00; box-shadow: 0 0 0 1px #ffffff; }
+.bdi-pill { display: inline-flex; align-items: center; min-height: 24px; padding: 0 10px; border-radius: 12px; font-size: 13px; font-weight: 600; }
+.tone-up { background: #d9484d; color: #ffffff; }
+.tone-down { background: #3e63dd; color: #ffffff; }
+.tone-mixed { background: #7a5cd6; color: #ffffff; }
+.tone-flat { background: var(--gray-a4); color: var(--gray-12); }
+.tone-none { background: var(--gray-a2); color: var(--gray-10); }
+.bdi-orders { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 12px; }
+.bdi-orders li { display: flex; justify-content: space-between; gap: 8px; }
+.bdi-group { display: grid; gap: 8px; }
 
 /* ---------- LLM 上下文 ---------- */
 .ctx-inspector { display: grid; gap: 12px; }

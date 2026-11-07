@@ -17,21 +17,22 @@ import {
 import { Cross2Icon, MagnifyingGlassIcon } from "@radix-ui/react-icons";
 import { duration, n, sinceMs, useData } from "../lib.js";
 import { Definition, Empty, StatusBadge, icon } from "../ui.jsx";
-import { LLMContext } from "./LLMContextInspector.jsx";
+import { BDIInspector } from "./BDIInspector.jsx";
 
 /*
  * 智能体空间与实验工作台共用的 Agent 列表和详情弹窗。
  * 有运行时快照时提供“运行状态”数据源，否则只展示成员档案。
  */
 
-const PIPELINE = ["state", "perception", "interpretation", "decision", "action", "commit"];
+// 事件里仍保留引擎的细分阶段供诊断；界面统一按 BDI 称呼。引擎把全部 LLM 调用记在
+// interpretation 一个阶段里，单看事件分不出具体环节，详情见弹窗的 BDI 页签。
 const STAGE_NAME = {
-  state: "读取状态",
-  perception: "感知信息",
-  interpretation: "形成判断（LLM）",
-  decision: "交易意图",
-  action: "可执行动作",
-  commit: "提交产物",
+  state: "Belief",
+  perception: "Belief",
+  interpretation: "BDI 推理",
+  decision: "Intention",
+  action: "Intention",
+  commit: "Intention",
 };
 export const stageName = (stage) => STAGE_NAME[stage] || stage || "—";
 const STATUS_ORDER = { failed: 0, retrying: 1, running: 2, pending: 3, completed: 4, skipped: 5 };
@@ -72,37 +73,6 @@ function AgentError({ error, previous }) {
         {error.summary || error.message || "没有错误详情"}
       </Callout.Text>
     </Callout.Root>
-  );
-}
-
-function Pipeline({ agent, now }) {
-  return (
-    <Flex direction="column" gap="3">
-      <AgentError error={agent.error} previous={agent.status !== "failed"} />
-      <div className="pipeline">
-        {PIPELINE.map((id) => {
-          const stage = agent.stages?.[id] || {};
-          const live = ["running", "retrying"].includes(stage.status);
-          return (
-            <Card key={id} size="1" className={`pipeline-step ${stage.status || "pending"}`}>
-              <Flex justify="between" align="center" gap="2">
-                <Text size="2" weight="medium">
-                  {stageName(id)}
-                </Text>
-                <StatusBadge value={stage.status || "pending"} />
-              </Flex>
-              <Text as="p" size="1" color="gray" mt="1">
-                {stage.status === "failed" ? stage.error_summary || stage.message : stage.message || "等待"}
-              </Text>
-              <Text as="p" size="1" color="gray" className="tabular">
-                {live ? `已进行 ${duration(sinceMs(stage.started_at, now))}` : duration(stage.duration_ms)}
-                {stage.substage ? ` · ${stage.substage}` : ""}
-              </Text>
-            </Card>
-          );
-        })}
-      </div>
-    </Flex>
   );
 }
 
@@ -180,19 +150,18 @@ function Prompts({ runId, agentId }) {
   );
 }
 
-export function AgentDialog({ runId, agentId, runtimeAgent = null, live = false, now = Date.now(), onClose }) {
+export function AgentDialog({ runId, agentId, runtimeAgent = null, live = false, onClose }) {
   const hasRun = runId !== "template";
   const tabs = [
     ["profile", "档案"],
     ["prompts", "提示词"],
-    ...(hasRun ? [["context", "上下文"]] : []),
-    ...(runtimeAgent ? [["pipeline", "流水线"]] : []),
+    ...(hasRun ? [["bdi", "BDI"]] : []),
   ];
   // 出问题的 Agent 先看它卡在哪一步。
-  const [tab, setTab] = useState(runtimeAgent && isProblem(runtimeAgent) ? "pipeline" : "profile");
+  const [tab, setTab] = useState(runtimeAgent && isProblem(runtimeAgent) ? "bdi" : "profile");
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
-      <Dialog.Content maxWidth="760px" aria-describedby={undefined}>
+      <Dialog.Content maxWidth={tab === "bdi" ? "1040px" : "760px"} aria-describedby={undefined}>
         <Flex justify="between" align="center" gap="3" mb="3">
           <Flex align="center" gap="2" minWidth="0">
             <Dialog.Title size="4" mb="0" className="tabular">
@@ -220,8 +189,11 @@ export function AgentDialog({ runId, agentId, runtimeAgent = null, live = false,
         <Box pt="3">
           {tab === "profile" && <Profile runId={runId} agentId={agentId} />}
           {tab === "prompts" && <Prompts runId={runId} agentId={agentId} />}
-          {tab === "context" && <LLMContext runId={runId} agentId={agentId} live={live} />}
-          {tab === "pipeline" && runtimeAgent && <Pipeline agent={runtimeAgent} now={now} />}
+          {tab === "bdi" && (
+            <BDIInspector runId={runId} agentId={agentId} live={live}>
+              {runtimeAgent?.error && <AgentError error={runtimeAgent.error} previous={runtimeAgent.status !== "failed"} />}
+            </BDIInspector>
+          )}
         </Box>
       </Dialog.Content>
     </Dialog.Root>

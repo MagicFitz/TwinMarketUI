@@ -519,7 +519,6 @@ export function Workspace({ runId, tab, subview, agent, refresh }) {
           agentId={agent}
           runtimeAgent={snapshot.agents?.find((item) => item.agent_id === agent) || null}
           live={live}
-          now={now}
           onClose={closeAgent}
         />
       )}

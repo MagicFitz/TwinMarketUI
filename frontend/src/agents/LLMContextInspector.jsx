@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Select, SegmentedControl, Text } from '@radix-ui/themes';
+import { Badge, Button, Flex, Heading, SegmentedControl, Text } from '@radix-ui/themes';
+import { StatusBadge } from '../ui.jsx';
 
 // trading_agent.py / utility.py 中发起 LLM 调用的函数 → 可读名称
 const STEP_NAME = {
@@ -16,6 +17,22 @@ const STEP_NAME = {
   parse_response_yaml: '修复 YAML',
   parse_response_json: '修复 JSON',
 };
+// 调用按 BDI 归组，依据论文的定义：信念来自读帖和读新闻，愿望驱动检索和选股，意图是下单和发帖。
+const BDI_GROUPS = [
+  ['Belief', ['_forum_action', '_read_news', '_get_environment_info', '_update_belief']],
+  ['Desire', ['_desire_agent', '_choose_stocks', '_data_collection']],
+  ['Intention', ['_make_final_decision', '_polish_decision', '_intention_agent']],
+];
+// 修复 YAML/JSON 的调用没有自己的归属，跟随它修复的上一次调用。
+function groupCalls(calls) {
+  const groups = new Map(BDI_GROUPS.map(([name]) => [name, []]));
+  let current = 'Belief';
+  for (const call of calls) {
+    current = BDI_GROUPS.find(([, steps]) => steps.includes(call.step))?.[0] || current;
+    groups.get(current).push(call);
+  }
+  return [...groups];
+}
 const ROLE_NAME = {system: '系统', user: '用户', assistant: '模型'};
 const tokens = value => value == null ? '—' : value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value);
 
@@ -95,8 +112,12 @@ function CallRow({call, record, open, onToggle}) {
   </section>;
 }
 
-export function LLMContext({runId, agentId, live}) {
-  const [date, setDate] = useState(null);
+function groupStatus(calls, active) {
+  if (calls.some(call => call.status === 'error')) return 'failed';
+  return active ? 'running' : 'completed';
+}
+
+export function LLMContext({runId, agentId, date, live}) {
   const [attemptIndex, setAttemptIndex] = useState(-1);
   const [openSeq, setOpenSeq] = useState(null);
   const {data, error} = useLLMContext(runId, agentId, date, live);
@@ -106,7 +127,9 @@ export function LLMContext({runId, agentId, live}) {
 
   if (error && !data) return <Text as="p" size="2" color="red">读取失败：{error}</Text>;
   if (!data) return <Text as="p" size="2" color="gray">读取中…</Text>;
-  if (!record) return <Text as="p" size="2" color="gray">{data.date || '当前日期'} 没有 LLM 调用</Text>;
+  if (!record) return <Text as="p" size="2" color="gray">{date} 没有 LLM 调用记录</Text>;
+  const groups = groupCalls(record.calls);
+  const lastGroup = groups.filter(([, calls]) => calls.length).at(-1)?.[0];
   return <div className="ctx-inspector">
     <div className="ctx-summary">
       <div><span>LLM 调用</span><strong>{record.calls.length} 次</strong></div>
@@ -115,15 +138,19 @@ export function LLMContext({runId, agentId, live}) {
       <div><span>模型</span><strong>{record.model}</strong></div>
     </div>
     <div className="ctx-controls">
-      {data.dates.length > 1 && <Select.Root size="1" value={data.date || undefined} onValueChange={value => { setDate(value); setAttemptIndex(-1); }}>
-        <Select.Trigger aria-label="选择模拟日" /><Select.Content>{data.dates.map(value => <Select.Item key={value} value={value}>{value}</Select.Item>)}</Select.Content>
-      </Select.Root>}
       {attempts.length > 1 && <SegmentedControl.Root size="1" value={String(attemptIndex < 0 ? attempts.length - 1 : attemptIndex)} onValueChange={value => setAttemptIndex(Number(value))}>
         {attempts.map((item, index) => <SegmentedControl.Item key={item.attempt} value={String(index)}>第 {item.attempt} 次尝试</SegmentedControl.Item>)}
       </SegmentedControl.Root>}
       <span className="ctx-legend"><i className="role-system"/>系统 <i className="role-user"/>用户 <i className="role-assistant"/>模型 <i className="output"/>输出上限</span>
     </div>
-    {record.calls.map(call => <CallRow key={call.seq} call={call} record={record}
-      open={openSeq === call.seq} onToggle={() => setOpenSeq(value => value === call.seq ? null : call.seq)}/>)}
+    {groups.filter(([, calls]) => calls.length).map(([name, calls]) => <section key={name} className="bdi-group">
+      <Flex align="center" gap="2">
+        <Heading as="h4" size="2">{name}</Heading>
+        <StatusBadge value={groupStatus(calls, live && name === lastGroup)}/>
+        <Text size="1" color="gray">{calls.length} 次调用</Text>
+      </Flex>
+      {calls.map(call => <CallRow key={call.seq} call={call} record={record}
+        open={openSeq === call.seq} onToggle={() => setOpenSeq(value => value === call.seq ? null : call.seq)}/>)}
+    </section>)}
   </div>;
 }

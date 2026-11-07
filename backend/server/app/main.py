@@ -39,6 +39,7 @@ from server.services.agents import AgentService
 from server.services.catalog import CatalogService
 from server.services.documentation import DocumentationService
 from server.services.logs import LogService
+from server.services.bdi import agent_bdi
 from server.services.llm_context import agent_llm_context
 from server.services.market import MarketService
 from server.services.model_settings import ModelSettingsService
@@ -348,6 +349,13 @@ def create_app(
             if agent["agent_id"] == agent_id:
                 return agent
         raise HTTPException(404, "当前事件中没有此 Agent")
+
+    @app.get("/api/runs/{run_id}/agents/{agent_id}/bdi")
+    def agent_bdi_view(run_id: str, agent_id: str):
+        output_dir = registered_output_dir(run_id)
+        if output_dir is None:
+            raise HTTPException(404, "运行不存在")
+        return agent_bdi(settings, output_dir, agent_id)
 
     @app.get("/api/runs/{run_id}/agents/{agent_id}/llm-context")
     def agent_llm_context_view(run_id: str, agent_id: str, date: str | None = None):
