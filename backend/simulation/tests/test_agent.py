@@ -28,6 +28,7 @@ def make_agent(**attributes):
     agent.retry_delay = 0
     agent.context_window = 100
     agent.max_output_tokens = 40
+    agent.chat_template_kwargs = None
     agent._log_api_event = Mock()
     agent.client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace()))
     for name, value in attributes.items():
@@ -53,6 +54,21 @@ class RequestBoundaryTests(unittest.TestCase):
         agent = make_agent()
         with self.assertRaisesRegex(ValueError, "上下文窗口"):
             agent._effective_max_tokens([{"role": "user", "content": "x" * 1000}], 1)
+
+    def test_chat_template_kwargs_are_sent_through_extra_body(self):
+        agent = make_agent(chat_template_kwargs={"enable_thinking": False})
+        create = Mock(return_value=completion())
+        agent.client.chat.completions.create = create
+        agent._BaseAgent__call_api([{"role": "user", "content": "hi"}], max_tokens=9)
+        self.assertEqual(create.call_args.kwargs["extra_body"],
+                         {"chat_template_kwargs": {"enable_thinking": False}})
+
+    def test_chat_template_kwargs_are_omitted_when_not_configured(self):
+        agent = make_agent()
+        create = Mock(return_value=completion())
+        agent.client.chat.completions.create = create
+        agent._BaseAgent__call_api([{"role": "user", "content": "hi"}], max_tokens=9)
+        self.assertNotIn("extra_body", create.call_args.kwargs)
 
     def test_request_carries_clamped_max_tokens(self):
         agent = make_agent()

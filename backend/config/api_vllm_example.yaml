@@ -5,3 +5,6 @@ api_key:
 model_name: qwen3-30b
 base_url: http://221.226.39.110:8025/v1
 timeout: 300
+# 关闭思考输出等对话模板参数，会原样透传给 vLLM；不支持的服务请删除此项。
+chat_template_kwargs:
+  enable_thinking: false

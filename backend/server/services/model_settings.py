@@ -111,6 +111,9 @@ class ModelSettingsService:
             headers["Authorization"] = f"Bearer {api_key}"
         if kind == "language":
             payload = {"model": config["model_name"], "messages": [{"role": "user", "content": "ping"}], "max_tokens": 1, "temperature": 0}
+            # 与 BaseAgent 发送相同的模板参数，测试结果才代表真实调用。
+            if config.get("chat_template_kwargs"):
+                payload["chat_template_kwargs"] = config["chat_template_kwargs"]
         else:
             payload = {"model": config["model_name"], "input": "ping" if self._provider(config) == "openai" else ["ping"]}
 

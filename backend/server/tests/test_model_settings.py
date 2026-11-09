@@ -5,6 +5,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import yaml
 from fastapi.testclient import TestClient
 
 from server.app.main import create_app
@@ -81,6 +82,19 @@ class ModelConnectionTests(unittest.TestCase):
         # 修改模型后，上一次测试结果不再适用。
         self.save("language", model_name="other", base_url=self.base)
         self.assertIsNone(self.client.get("/api/settings/models").json()["language"]["last_test"])
+
+    def test_language_test_sends_chat_template_kwargs_and_saving_keeps_them(self):
+        self.save("language", model_name="qwen", base_url=self.base, api_key="good-key")
+        path = Path(self.temp.name) / "config" / "api.yaml"
+        config = yaml.safe_load(path.read_text(encoding="utf-8"))
+        config["chat_template_kwargs"] = {"enable_thinking": False}
+        path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+        self.assertTrue(self.client.post("/api/settings/models/language/test").json()["ok"])
+        self.assertEqual(FakeOpenAI.requests[-1]["body"]["chat_template_kwargs"], {"enable_thinking": False})
+        # 设置页不暴露该字段，保存时也不能把它弄丢。
+        self.save("language", model_name="qwen", base_url=self.base)
+        self.assertEqual(yaml.safe_load(path.read_text(encoding="utf-8"))["chat_template_kwargs"], {"enable_thinking": False})
 
     def test_auth_failure_is_a_result_and_key_is_not_echoed(self):
         self.save("language", model_name="qwen", base_url=self.base, api_key="bad-key")

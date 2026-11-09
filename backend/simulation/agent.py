@@ -44,6 +44,7 @@ class BaseAgent:
         timeout                     单次请求超时（秒），默认 120
         max_retries, retry_delay    重试次数（含首次请求）与退避基数，默认 3 / 1 秒
         context_window, max_output_tokens   模型上限，用于收缩 max_tokens
+        chat_template_kwargs        可选，原样透传给 vLLM 的对话模板，如 {enable_thinking: false}
     """
 
     def __init__(self, system_prompt=sys_default_prompt, config_path="./config/api.yaml"):
@@ -62,6 +63,7 @@ class BaseAgent:
         self.retry_delay = float(self.config.get("retry_delay", 1))
         self.context_window = int(self.config.get("context_window", DEFAULT_CONTEXT_WINDOW))
         self.max_output_tokens = int(self.config.get("max_output_tokens", DEFAULT_MAX_OUTPUT_TOKENS))
+        self.chat_template_kwargs = self.config.get("chat_template_kwargs")
         self.client = OpenAI(
             api_key=random.choice(api_keys),
             base_url=self.base_url,
@@ -150,6 +152,9 @@ class BaseAgent:
             "frequency_penalty": frequency_penalty, "presence_penalty": presence_penalty,
             **kwargs,
         }
+        # 非 OpenAI 标准参数，SDK 只接受经 extra_body 放入请求体；未配置时不发送，避免其他服务商拒绝。
+        if self.chat_template_kwargs:
+            request["extra_body"] = {"chat_template_kwargs": self.chat_template_kwargs, **kwargs.get("extra_body", {})}
         request_id = str(uuid.uuid4())
         for attempt in range(1, self.max_retries + 1):
             started_at = time.perf_counter()
