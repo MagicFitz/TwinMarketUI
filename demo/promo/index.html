@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>TwinMarketUI · 介绍视频</title>
+<!--
+  TwinMarketUI 介绍视频（约 70 秒）。画面完全由 render(t) 决定，便于逐帧导出：
+    - 浏览器预览：直接打开本文件即可循环播放（?t=12.5 可定格在某一秒）
+    - 导出视频：node demo/scripts/render-video.mjs
+  结构：片头艺术字 → TwinMarket 是什么 → 能做什么 → 整体架构 → 实验管理 → 结果分析 → 片尾
+  所有镜头切换点都在 0.5 秒（120 BPM 的一拍）的整数倍上，背景音乐据此对齐。
+-->
+<style>
+  :root {
+    --ink: #0f172a;
+    --muted: #5b6577;
+    --accent: #12a594;
+    --accent-soft: rgba(18, 165, 148, .14);
+    --blue: #3e63dd;
+    --line: #dfe5ea;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #f4f7f6; }
+  body { font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; color: var(--ink); }
+
+  #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden;
+    background:
+      radial-gradient(900px 700px at 8% 12%, rgba(18,165,148,.16), transparent 60%),
+      radial-gradient(800px 700px at 95% 95%, rgba(62,99,221,.13), transparent 60%),
+      linear-gradient(160deg, #f8fbfa, #eef3f2); }
+  #grid { position: absolute; inset: 0; opacity: .5;
+    background-image: linear-gradient(rgba(15,23,42,.045) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(15,23,42,.045) 1px, transparent 1px);
+    background-size: 48px 48px; }
+
+  /* ---------- 片头 / 片尾艺术字 ---------- */
+  #logo { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+  #logoGlow { position: absolute; left: 460px; top: 250px; width: 1000px; height: 520px; border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(18,165,148,.22), rgba(62,99,221,.10) 55%, transparent); filter: blur(10px); }
+  #logoRow { position: absolute; left: 0; top: 372px; width: 1920px; display: flex; justify-content: center; align-items: center; }
+  #logoWord { position: relative; display: flex; font-family: "SF Pro Display", -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 176px; font-weight: 800; letter-spacing: -5px; line-height: 1; }
+  #logoWord span { display: inline-block; will-change: transform, opacity, filter; }
+  #logoWord .ink { color: var(--ink); }
+  #logoWord .grad { color: transparent; -webkit-background-clip: text; background-clip: text;
+    background-image: linear-gradient(90deg, #12a594 0%, #1f8fb5 50%, #3e63dd 100%); }
+  #logoShine { position: absolute; inset: -20px -40px; pointer-events: none; mix-blend-mode: overlay;
+    background: linear-gradient(105deg, transparent 42%, rgba(255,255,255,.95) 50%, transparent 58%); background-size: 300% 100%; }
+  #logoUI { margin-left: 26px; font-family: "SF Pro Display", -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 96px; font-weight: 800; color: #fff; letter-spacing: 1px; line-height: 1; padding: 18px 26px 16px;
+    border-radius: 30px; background: linear-gradient(135deg, #12a594, #3e63dd);
+    box-shadow: 0 24px 50px -16px rgba(30,120,190,.65), inset 0 1px 0 rgba(255,255,255,.35); }
+  #logoChart { position: absolute; left: 0; top: 0; overflow: visible; }
+  #logoSub { position: absolute; left: 0; width: 1920px; top: 640px; text-align: center; font-size: 34px; color: var(--muted); letter-spacing: .32em; }
+  #logoMeta { position: absolute; left: 0; width: 1920px; top: 712px; text-align: center; font-size: 22px; color: #8a93a3; }
+
+  /* ---------- 左侧文字 ---------- */
+  #side { position: absolute; left: 96px; top: 0; width: 420px; height: 1080px; }
+  .sec { position: absolute; left: 0; top: 300px; width: 420px; }
+  .sec .no { font-size: 20px; font-weight: 600; color: var(--accent); letter-spacing: .14em; }
+  .sec .no b { display: inline-block; width: 36px; height: 3px; background: var(--accent); vertical-align: middle; margin-left: 12px; }
+  .sec h2 { font-size: 56px; line-height: 1.22; font-weight: 700; margin-top: 26px; letter-spacing: .01em; }
+  .sec p { font-size: 24px; line-height: 1.6; color: var(--muted); margin-top: 24px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+  .pills span { font-size: 18px; font-weight: 600; padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(18,165,148,.35); color: #0d7f72; background: rgba(255,255,255,.7); }
+  .pills span.gold { border-color: rgba(200,140,20,.4); color: #9a6a00; }
+  .checks { margin-top: 34px; display: grid; gap: 16px; }
+  .checks div { font-size: 28px; font-weight: 600; display: flex; align-items: center; gap: 14px; }
+  .checks span { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 22px; }
+
+  #chapters { position: absolute; left: 96px; bottom: 96px; display: flex; gap: 14px; }
+  #chapters div { width: 92px; }
+  #chapters i { display: block; height: 5px; border-radius: 3px; background: rgba(15,23,42,.12); overflow: hidden; }
+  #chapters i b { display: block; height: 100%; width: 0; background: var(--accent); }
+  #chapters span { display: block; margin-top: 10px; font-size: 16px; color: #8a93a3; white-space: nowrap; }
+  #chapters div.on span { color: var(--ink); font-weight: 600; }
+  #note { position: absolute; left: 96px; bottom: 48px; font-size: 17px; color: #8a93a3; }
+
+  /* ---------- 右侧面板通用 ---------- */
+  .panel { position: absolute; left: 560px; top: 118px; width: 1280px; height: 844px; }
+  .card { background: #fff; border-radius: 20px; box-shadow: 0 30px 70px -24px rgba(15,23,42,.25), 0 0 0 1px rgba(15,23,42,.06); }
+
+  /* 是什么 */
+  #whatFig { position: absolute; left: 0; top: 20px; width: 1280px; height: 640px; overflow: hidden; padding: 22px; }
+  #whatFig img { width: 1236px; display: block; transform-origin: 50% 40%; border-radius: 10px; }
+  #whatStats { position: absolute; left: 0; top: 700px; width: 1280px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  #whatStats div { padding: 20px 24px; }
+  #whatStats strong { display: block; font-size: 44px; line-height: 1; font-weight: 800; color: var(--accent); font-family: "SF Pro Display", -apple-system, sans-serif; }
+  #whatStats span { display: block; margin-top: 10px; font-size: 20px; color: var(--muted); }
+
+  /* 能做什么 */
+  #canGrid { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 36px; padding: 20px 0; }
+  .cap { padding: 44px 44px 40px; position: relative; overflow: hidden; }
+  .cap .ico { width: 76px; height: 76px; border-radius: 22px; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #12a594, #3e63dd); box-shadow: 0 14px 30px -12px rgba(30,120,190,.6); }
+  .cap .ico svg { width: 40px; height: 40px; }
+  .cap h3 { margin-top: 30px; font-size: 38px; font-weight: 700; }
+  .cap p { margin-top: 16px; font-size: 23px; line-height: 1.6; color: var(--muted); }
+  .cap .kw { position: absolute; left: 44px; bottom: 38px; display: flex; gap: 10px; }
+  .cap .kw span { font-size: 18px; font-weight: 600; padding: 7px 14px; border-radius: 10px; background: #eef7f5; color: #0d7f72; }
+
+  /* 整体架构 */
+  #archSvg { position: absolute; left: 0; top: 0; overflow: visible; }
+  .node { position: absolute; padding: 18px 22px; border-radius: 18px; background: #fff;
+    box-shadow: 0 20px 44px -22px rgba(15,23,42,.35), 0 0 0 1px rgba(15,23,42,.07); }
+  .node::before { content: ""; position: absolute; left: 0; top: 18px; bottom: 18px; width: 5px; border-radius: 0 4px 4px 0; background: var(--c, var(--accent)); }
+  .node h4 { font-size: 27px; font-weight: 700; display: flex; align-items: center; gap: 12px; }
+  .node h4 em { font-style: normal; font: 600 17px/1 ui-monospace, Menlo, monospace; color: var(--c, var(--accent));
+    background: color-mix(in srgb, var(--c, var(--accent)) 12%, white); padding: 5px 8px; border-radius: 7px; }
+  .node .sub { margin-top: 8px; font-size: 19px; color: var(--muted); }
+  .node .chips { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .node .chips span { font-size: 17px; padding: 5px 11px; border-radius: 8px; background: #f2f5f7; color: #3b4556; }
+  .elabel { position: absolute; font-size: 17px; font-weight: 600; color: #4a5568; background: rgba(255,255,255,.9);
+    padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line); white-space: nowrap; }
+
+  /* ---------- 浏览器窗口 ---------- */
+  #win { position: absolute; left: 560px; top: 118px; width: 1280px; height: 844px;
+    border-radius: 16px; overflow: hidden; background: #fff;
+    box-shadow: 0 40px 90px -20px rgba(15,23,42,.30), 0 0 0 1px rgba(15,23,42,.08);
+    transform-origin: 50% 50%; }
+  #chrome { height: 44px; background: #f1f3f5; border-bottom: 1px solid #e3e6ea;
+    display: flex; align-items: center; padding: 0 18px; gap: 8px; }
+  #chrome i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  #url { margin-left: 22px; flex: 0 1 620px; height: 26px; border-radius: 8px; background: #fff;
+    border: 1px solid #e3e6ea; font: 13px/24px ui-monospace, Menlo, monospace; color: #6b7280; padding: 0 12px; }
+  #view { position: relative; width: 1280px; height: 800px; overflow: hidden; background: #f9f9fb; }
+  #view img { position: absolute; left: 0; top: 0; width: 1600px; height: auto; transform-origin: 0 0; }
+
+  #overlay { position: absolute; inset: 0; z-index: 20; pointer-events: none; }
+  .hl { position: absolute; border: 3px solid var(--accent); border-radius: 12px;
+    background: var(--accent-soft); box-shadow: 0 0 0 6px rgba(18,165,148,.12); }
+  .tag { position: absolute; background: var(--accent); color: #fff; font-size: 22px; font-weight: 600;
+    padding: 6px 14px; border-radius: 10px; white-space: nowrap; box-shadow: 0 8px 20px -6px rgba(18,165,148,.6); }
+  .ring { position: absolute; border: 3px solid var(--accent); border-radius: 50%; }
+  #cursor { position: absolute; width: 30px; height: 30px; z-index: 30; }
+  #click { position: absolute; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%;
+    border: 3px solid var(--accent); z-index: 29; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="grid"></div>
+
+  <!-- 片头 / 片尾 -->
+  <div id="logo">
+    <div id="logoGlow"></div>
+    <div id="logoRow">
+      <div id="logoWord"><div id="logoShine"></div></div>
+      <div id="logoUI">UI</div>
+    </div>
+    <svg id="logoChart" width="1920" height="1080"><defs>
+      <linearGradient id="lg" x1="0" x2="1"><stop offset="0" stop-color="#12a594"/><stop offset="1" stop-color="#3e63dd"/></linearGradient>
+    </defs><path id="logoLine" fill="none" stroke="url(#lg)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle id="logoDot" r="9" fill="#3e63dd"/><circle id="logoDotHalo" r="9" fill="none" stroke="#3e63dd" stroke-width="3"/></svg>
+    <div id="logoSub"></div>
+    <div id="logoMeta">基于 TwinMarket（NeurIPS 2025）· arXiv 2502.01506</div>
+  </div>
+
+  <!-- 右侧：是什么 -->
+  <div class="panel" id="what">
+    <div class="card" id="whatFig"><img src="../../frontend/src/assets/landing/TwinMarket.jpg"></div>
+    <div id="whatStats">
+      <div class="card"><strong>1000+</strong><span>LLM 投资者 Agent</span></div>
+      <div class="card"><strong>50</strong><span>上证 50 成分股</span></div>
+      <div class="card"><strong>4</strong><span>复现的典型事实</span></div>
+      <div class="card"><strong>BDI</strong><span>信念-愿望-意图框架</span></div>
+    </div>
+  </div>
+
+  <!-- 右侧：能做什么 -->
+  <div class="panel" id="can"><div id="canGrid">
+    <div class="card cap"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2V16h5v-.2c.1-.8.5-1.5 1.1-2A6 6 0 0 0 12 3z"/></svg></div>
+      <h3>BDI 认知决策</h3><p>每位投资者按信念 → 愿望 → 意图推理，<br>再决定买入、卖出或持有。</p><div class="kw"><span>信念 Belief</span><span>愿望 Desire</span><span>意图 Intention</span></div></div>
+    <div class="card cap"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg></div>
+      <h3>真实用户画像</h3><p>由真实投资者数据构建风格、持仓，<br>以及处置效应等行为偏差。</p><div class="kw"><span>投资风格</span><span>处置效应</span><span>彩票偏好</span><span>初始持仓</span></div></div>
+    <div class="card cap"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></svg></div>
+      <h3>社交信息传播</h3><p>Agent 在论坛发帖、转发与点赞，<br>观点和谣言沿关系网络扩散。</p><div class="kw"><span>发帖</span><span>转发</span><span>点赞 / 踩</span><span>意见领袖</span></div></div>
+    <div class="card cap"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v18M18 3v18M12 6v12"/><rect x="4" y="7" width="4" height="7" rx="1" fill="#fff"/><rect x="10" y="9" width="4" height="5" rx="1"/><rect x="16" y="5" width="4" height="9" rx="1" fill="#fff"/></svg></div>
+      <h3>订单驱动市场</h3><p>买卖委托撮合成交形成每日价格，<br>复现厚尾、波动聚集等典型事实。</p><div class="kw"><span>厚尾</span><span>波动聚集</span><span>杠杆效应</span><span>量价关系</span></div></div>
+  </div></div>
+
+  <!-- 右侧：整体架构 -->
+  <div class="panel" id="arch">
+    <svg id="archSvg" width="1280" height="844"><defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker>
+    </defs></svg>
+  </div>
+
+  <!-- 浏览器窗口 -->
+  <div id="win">
+    <div id="chrome"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+      <div id="url">TwinMarketUI演示视频</div></div>
+    <div id="view"><div id="overlay"></div></div>
+  </div>
+
+  <!-- 左侧文字 -->
+  <div id="side">
+    <div class="sec" id="t-what"><div class="no">认识 TwinMarket<b></b></div><h2>TwinMarket<br>是什么</h2>
+      <p>用大语言模型驱动上千名具有真实画像、认知偏差与社交关系的投资者，从个体决策中涌现出泡沫、崩盘与市场典型事实。</p>
+      <div class="pills"><span>NeurIPS 2025</span><span class="gold">ICLR 2025 Financial AI 最佳论文</span></div></div>
+    <div class="sec" id="t-can"><div class="no">认识 TwinMarket<b></b></div><h2>它能模拟<br>什么</h2>
+      <p>微观层模拟每位投资者的决策，宏观层模拟订单撮合与社交信息传播，两层都以真实行为数据、行情与新闻为依据。</p></div>
+    <div class="sec" id="t-arch"><div class="no">系统架构<b></b></div><h2>TwinMarketUI<br>整体架构</h2>
+      <p>在 TwinMarket 之上加一层本地研究工作台：浏览器里配置与观察，后台进程独立运行，每次实验完整留档、可复现。</p></div>
+
+    <div class="sec" id="t-exp-list"><div class="no">实验管理 / 01<b></b></div><h2>所有实验<br>一处管理</h2>
+      <p>搜索、按状态筛选，在列表与卡片之间切换；已有实验可一键复制。</p></div>
+    <div class="sec" id="t-exp-new"><div class="no">实验管理 / 02<b></b></div><h2>几步配置<br>即可开跑</h2>
+      <p>选择 Agent 规模、模拟区间与市场模板，系统先校验数据覆盖，再提交运行。</p></div>
+    <div class="sec" id="t-exp-progress"><div class="no">实验管理 / 03<b></b></div><h2>按交易日<br>推进模拟</h2>
+      <p>每个交易日依次经过环境准备、Agent 决策、市场撮合、社交互动与提交，进度实时可见。</p></div>
+    <div class="sec" id="t-exp-logs"><div class="no">实验管理 / 04<b></b></div><h2>日志与诊断</h2>
+      <p>运行状态、慢阶段与错误集中呈现，可停止、重试或从断点续跑。</p></div>
+
+    <div class="sec" id="t-market"><div class="no">结果分析 / 01<b></b></div><h2>模拟行情<br>一目了然</h2>
+      <p>初始化历史与模拟结果接成一条曲线，按行业指数切换查看。</p></div>
+    <div class="sec" id="t-trading"><div class="no">结果分析 / 02<b></b></div><h2>成交与<br>行为偏差</h2>
+      <p>成交额、委托失衡与处置效应，按投资者画像分组对比。</p></div>
+    <div class="sec" id="t-propagation"><div class="no">结果分析 / 03<b></b></div><h2>信息如何<br>在网络中扩散</h2>
+      <p>Agent 关系网络、意见领袖与转发链深度，逐日回看。</p></div>
+    <div class="sec" id="t-bdi"><div class="no">结果分析 / 04<b></b></div><h2>信念、愿望<br>与意图</h2>
+      <p>逐日拆解每个 Agent 的判断、仓位目标和实际交易。</p></div>
+    <div class="sec" id="t-stylized"><div class="no">结果分析 / 05<b></b></div><h2>检验<br>市场典型事实</h2>
+      <div class="checks">
+        <div id="c0"><span>✓</span>收益率厚尾</div>
+        <div id="c1"><span>✓</span>杠杆效应</div>
+        <div id="c2"><span>✓</span>量价关系</div>
+        <div id="c3"><span>✓</span>波动聚集</div>
+      </div></div>
+  </div>
+  <div id="chapters"></div>
+  <div id="note">南京大学工程管理学院</div>
+
+  <svg id="cursor" viewBox="0 0 24 24"><path d="M4 2l15 11-6.5 1.2L9.7 21z" fill="#0f172a" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+  <div id="click"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const set = (el, styles) => Object.assign(el.style, styles);
+
+// ---- 缓动工具 ----
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => (x = clamp(x), x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const out = x => 1 - Math.pow(1 - clamp(x), 3);
+const back = x => { x = clamp(x); const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const span = (t, a, b) => clamp((t - a) / (b - a));
+// 在 [a, b] 内淡入、[c, d] 内淡出
+const window4 = (t, a, b, c, d) => Math.min(out(span(t, a, b)), 1 - ease(span(t, c, d)));
+
+// ======================= 时间线 =======================
+const INTRO = { open: [0, 4.5], what: [4.5, 11], can: [11, 17.5], arch: [17.5, 25.5] };
+const OUTRO = [66.5, 70];
+const DURATION = 70;
+const CHAPTERS = [['简介', 4.5, 17.5], ['架构', 17.5, 25.5], ['实验管理', 25.5, 42], ['结果分析', 42, 66.5]];
+const SUBTITLE = '可交互的多智能体市场模拟';
+
+// ---- 镜头：截图坐标系宽 1600（CSS 像素），视窗为 1280×800 ----
+const VW = 1280, VH = 800, BASE = VW / 1600;
+const FULL = { x: 800, y: 500, z: 1 };
+function camAt(keys, t) {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) {
+    const [t1, c1] = keys[i];
+    if (t <= t1) {
+      const [t0, c0] = keys[i - 1];
+      const k = ease((t - t0) / (t1 - t0));
+      return { x: lerp(c0.x, c1.x, k), y: lerp(c0.y, c1.y, k), z: lerp(c0.z, c1.z, k) };
+    }
+  }
+  return keys[keys.length - 1][1];
+}
+const proj = (cam, x, y) => {
+  const s = BASE * cam.z;
+  return [VW / 2 + (x - cam.x) * s, VH / 2 + (y - cam.y) * s, s];
+};
+
+// 结束时光标要点击的位置（截图坐标）
+const TARGET = {
+  newRun: [1515, 96], submit: [1166, 1162], logsTab: [416, 170], analysisTab: [368, 170],
+  trading: [383, 222], propagation: [470, 222], agents: [733, 222], stylized: [558, 222],
+};
+
+// 浏览器窗口内的镜头：起止时间、截图、镜头关键帧（相对镜头开始的秒数）、标注、结束时点击的目标
+const SHOTS = [
+  // ---------- 实验管理 ----------
+  { id: 'exp-list', t0: 25.5, t1: 29.5,
+    cam: [[0, FULL], [1.6, FULL], [2.3, { x: 1310, y: 300, z: 1.7 }], [3.1, { x: 1320, y: 300, z: 1.72 }], [3.7, FULL]],
+    marks: [
+      { box: [251, 134, 1568, 172], tag: '搜索 · 状态筛选 · 列表 / 卡片切换', at: [0.5, 1.7] },
+      { box: [1141, 186, 1568, 349], tag: '状态、进度与快捷操作', at: [2.3, 3.2] },
+    ],
+    click: 'newRun' },
+  { id: 'exp-new', t0: 29.5, t1: 34.5,
+    cam: [[0, FULL], [0.8, { x: 860, y: 450, z: 1.25 }], [1.8, { x: 860, y: 455, z: 1.25 }], [2.5, { x: 860, y: 790, z: 1.25 }], [3.8, { x: 860, y: 800, z: 1.25 }], [4.4, { x: 800, y: 740, z: 1 }]],
+    marks: [
+      { box: [528, 384, 1208, 520], tag: 'Agent 规模 · 并发 · 模拟区间', at: [0.9, 1.9] },
+      { box: [528, 680, 1208, 872], tag: '市场数据覆盖自动校验', at: [2.5, 3.2], side: 'top' },
+      { box: [528, 965, 1208, 1100], tag: '激活概率 · 技术面概率 · 随机种子', at: [3.2, 4.0], side: 'top' },
+    ],
+    click: 'submit' },
+  { id: 'exp-progress', t0: 34.5, t1: 39.0,
+    cam: [[0, FULL], [0.8, { x: 910, y: 380, z: 1.32 }], [2.4, { x: 910, y: 380, z: 1.32 }], [3.0, { x: 1240, y: 660, z: 1.5 }], [3.6, { x: 1245, y: 660, z: 1.52 }], [4.1, FULL]],
+    marks: [
+      { box: [264, 360, 515, 421], tag: '环境准备 → Agent 决策 → 市场撮合 → 社交互动 → 提交当日', at: [0.9, 2.5] },
+      { box: [528, 360, 776, 421], at: [1.15, 2.5] },
+      { box: [787, 360, 1035, 421], at: [1.4, 2.5] },
+      { box: [1048, 360, 1296, 421], at: [1.65, 2.5] },
+      { box: [1307, 360, 1552, 421], at: [1.9, 2.5] },
+      { box: [917, 456, 1568, 880], tag: '运行事件实时推送', at: [3.0, 3.7], side: 'top' },
+    ],
+    click: 'logsTab' },
+  { id: 'exp-logs', t0: 39.0, t1: 42.0,
+    cam: [[0, FULL], [0.7, { x: 910, y: 690, z: 1.22 }], [2.0, { x: 910, y: 700, z: 1.24 }], [2.6, FULL]],
+    marks: [
+      { box: [251, 648, 1568, 1000], tag: '运行日志与诊断事件，一处排查', at: [0.7, 2.1], side: 'top' },
+    ],
+    click: 'analysisTab' },
+
+  // ---------- 结果分析 ----------
+  { id: 'market', t0: 42.0, t1: 47.0,
+    cam: [[0, FULL], [1.6, { x: 910, y: 410, z: 1.18 }], [3.9, { x: 960, y: 400, z: 1.22 }], [4.6, FULL]],
+    marks: [{ box: [1282, 268, 1450, 303], tag: '按行业指数切换', at: [1.8, 3.9] }],
+    click: 'trading' },
+  { id: 'trading', t0: 47.0, t1: 52.0,
+    cam: [[0, FULL], [0.9, { x: 900, y: 380, z: 1.12 }], [1.9, { x: 900, y: 380, z: 1.12 }], [2.6, { x: 1243, y: 520, z: 1.65 }], [3.9, { x: 1250, y: 520, z: 1.68 }], [4.6, FULL]],
+    marks: [
+      { box: [253, 254, 1568, 342], tag: '买卖额 · 成交笔数 · 委托成交率', at: [0.8, 2.0] },
+      { box: [918, 359, 1567, 684], tag: '处置效应：PGR vs PLR', at: [2.7, 3.9] },
+    ],
+    click: 'propagation' },
+  { id: 'propagation', t0: 52.0, t1: 57.0,
+    cam: [[0, FULL], [1.4, { x: 900, y: 600, z: 1.3 }], [3.9, { x: 890, y: 610, z: 1.36 }], [4.6, FULL]],
+    marks: [{ ring: [884, 629, 22], tag: '意见领袖', at: [1.5, 3.9] }],
+    click: 'agents' },
+  { id: 'bdi', t0: 57.0, t1: 62.5,
+    cam: [[0, FULL], [1.0, { x: 790, y: 385, z: 1.5 }], [2.9, { x: 820, y: 385, z: 1.5 }], [3.7, { x: 800, y: 560, z: 1.38 }], [4.9, { x: 800, y: 560, z: 1.4 }], [5.5, FULL]],
+    marks: [
+      { box: [300, 352, 1295, 380], tag: 'Belief 信念：看涨 · 中性 · 看空', at: [1.1, 1.7], tagAt: [300, 452] },
+      { box: [300, 381, 1295, 409], tag: 'Desire 愿望：想加仓 · 想减仓', at: [1.7, 2.3], tagAt: [300, 452] },
+      { box: [300, 410, 1295, 438], tag: 'Intention 意图：买入 · 卖出 · 调仓', at: [2.3, 2.95], tagAt: [300, 452] },
+      { box: [1123, 329, 1163, 440], tag: '想减仓 → 卖出', at: [3.0, 3.6], side: 'top' },
+      { box: [638, 483, 1296, 658], tag: '仓位目标与实际成交', at: [3.8, 5.0] },
+    ],
+    click: 'stylized' },
+  { id: 'stylized', t0: 62.5, t1: 66.5,
+    cam: [[0, FULL], [0.8, { x: 910, y: 588, z: 1.08 }], [4.0, { x: 910, y: 588, z: 1.1 }]],
+    marks: [
+      { box: [253, 255, 901, 579], at: [0.7, 1.5] },
+      { box: [918, 255, 1567, 579], at: [1.4, 2.2] },
+      { box: [253, 597, 901, 921], at: [2.1, 2.9] },
+      { box: [918, 597, 1567, 921], at: [2.8, 3.8] },
+    ] },
+];
+const WIN_IN = SHOTS[0].t0, WIN_OUT = SHOTS[SHOTS.length - 1].t1;
+
+// 给背景音乐用：章节、镜头切换与点击时刻
+window.TIMELINE = {
+  duration: DURATION,
+  sections: [
+    { style: 'intro', t0: 0, t1: INTRO.open[1] },
+    { style: 'light', t0: INTRO.what[0], t1: INTRO.arch[1] },
+    { style: 'full', t0: WIN_IN, t1: WIN_OUT, lift: CHAPTERS[3][1] },
+    { style: 'outro', t0: OUTRO[0], t1: DURATION },
+  ],
+  cuts: [INTRO.what[0], INTRO.can[0], INTRO.arch[0], ...SHOTS.map(s => s.t0), OUTRO[0]],
+  clicks: SHOTS.filter(s => s.click).map(s => s.t1 - 0.4),
+};
+
+// ======================= 构建元素 =======================
+// 截图与标注
+const view = $('view'), overlay = $('overlay');
+for (const shot of SHOTS) {
+  shot.img = document.createElement('img');
+  shot.img.src = `../shots/${shot.id}.png`;
+  view.insertBefore(shot.img, overlay);
+  for (const m of shot.marks) {
+    m.el = document.createElement('div');
+    m.el.className = m.ring ? 'ring' : 'hl';
+    overlay.appendChild(m.el);
+    if (m.tag) { m.tagEl = document.createElement('div'); m.tagEl.className = 'tag'; m.tagEl.textContent = m.tag; overlay.appendChild(m.tagEl); }
+  }
+}
+
+// 章节进度
+for (const [name] of CHAPTERS) {
+  const d = document.createElement('div');
+  d.innerHTML = `<i><b></b></i><span>${name}</span>`;
+  $('chapters').appendChild(d);
+}
+
+// 艺术字：每个字母一个 span，渐变按整词连续铺开
+const word = $('logoWord');
+const letters = [...'TwinMarket'].map((ch, i) => {
+  const s = document.createElement('span');
+  s.textContent = ch;
+  s.className = i < 4 ? 'ink' : 'grad';
+  word.insertBefore(s, $('logoShine'));
+  return s;
+});
+function layoutLogo() {
+  const grads = letters.filter(s => s.className === 'grad');
+  const x0 = grads[0].offsetLeft, w = grads.at(-1).offsetLeft + grads.at(-1).offsetWidth - x0;
+  for (const s of grads) { s.style.backgroundSize = `${w}px 100%`; s.style.backgroundPosition = `${x0 - s.offsetLeft}px 0`; }
+  // 词下方的走势线
+  const r = word.getBoundingClientRect(), u = $('logoUI').getBoundingClientRect();
+  const left = r.left, right = u.right, y = r.bottom + 34;
+  const pts = [0, .08, .16, .22, .3, .38, .45, .52, .6, .68, .75, .83, .9, 1].map((k, i) =>
+    [left + (right - left) * k, y - [0, 10, 4, 18, 12, 26, 16, 30, 22, 40, 30, 46, 40, 58][i]]);
+  $('logoLine').setAttribute('d', 'M' + pts.map(p => p.join(',')).join(' L'));
+  logoLen = $('logoLine').getTotalLength();
+}
+let logoLen = 0;
+
+// 架构图
+const ARCH_NODES = [
+  { id: 'browser', x: 440, y: 20, w: 400, at: 0.3, c: '#3e63dd', title: '浏览器 · Studio', port: ':5173', sub: 'React + Vite + Radix Themes' },
+  { id: 'control', x: 60, y: 245, w: 500, at: 1.3, title: 'FastAPI 控制面', port: ':8766', chips: ['Run Registry', '查询接口', '实时运行事件'] },
+  { id: 'mds', x: 720, y: 245, w: 500, at: 1.5, c: '#8e4ec6', title: '市场数据服务', port: ':8100', chips: ['数据版本', '市场模板', '冻结资产包'] },
+  { id: 'worker', x: 60, y: 505, w: 220, at: 2.4, c: '#e5484d', title: 'Worker', sub: '启动与守护进程' },
+  { id: 'sim', x: 360, y: 470, w: 520, at: 3.0, c: '#e5484d', title: 'Simulation 进程', sub: '每个实验一个独立进程', chips: ['BDI Agent', '订单撮合', '社交论坛'] },
+  { id: 'runs', x: 360, y: 712, w: 520, at: 4.2, c: '#f76b15', title: 'runs/&lt;run_id&gt;/', sub: '冻结输入 · manifest · 事件日志 · 结果文件' },
+];
+const ARCH_EDGES = [
+  { d: 'M560,140 C560,200 310,190 310,245', at: [0.9, 1.5], label: ['配置 · 查询 · 实时事件', 300, 172] },
+  { d: 'M720,140 C720,200 970,190 970,245', at: [1.0, 1.6], label: ['/mds 代理', 905, 172] },
+  { d: 'M170,402 L170,505', at: [2.1, 2.5] },
+  { d: 'M280,560 L360,560', at: [2.8, 3.1] },
+  { d: 'M970,402 C970,520 960,560 880,560', at: [3.4, 3.9], label: ['冻结的市场输入', 950, 470] },
+  { d: 'M620,628 L620,712', at: [3.9, 4.2] },
+  { d: 'M360,765 C20,765 20,330 60,330', at: [4.7, 5.3], dash: true, label: ['读取结果', -6, 655] },
+];
+const archSvg = $('archSvg'), archEl = $('arch');
+for (const n of ARCH_NODES) {
+  n.el = document.createElement('div');
+  n.el.className = 'node';
+  set(n.el, { left: n.x + 'px', top: n.y + 'px', width: n.w + 'px' });
+  if (n.c) n.el.style.setProperty('--c', n.c);
+  n.el.innerHTML = `<h4>${n.title}<em>${n.port || ''}</em></h4>` + (n.sub ? `<div class="sub">${n.sub}</div>` : '') +
+    (n.chips ? `<div class="chips">${n.chips.map(c => `<span>${c}</span>`).join('')}</div>` : '');
+  if (!n.port) n.el.querySelector('em').remove();
+  archEl.appendChild(n.el);
+}
+for (const e of ARCH_EDGES) {
+  e.el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  e.el.setAttribute('d', e.d);
+  e.el.setAttribute('fill', 'none');
+  e.el.setAttribute('stroke', '#94a3b8');
+  e.el.setAttribute('stroke-width', '3');
+  e.el.setAttribute('stroke-linecap', 'round');
+  archSvg.appendChild(e.el);
+  e.len = e.el.getTotalLength();
+  e.dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  e.dot.setAttribute('r', '6');
+  e.dot.setAttribute('fill', '#12a594');
+  archSvg.appendChild(e.dot);
+  if (e.label) {
+    e.labelEl = document.createElement('div');
+    e.labelEl.className = 'elabel';
+    e.labelEl.textContent = e.label[0];
+    set(e.labelEl, { left: e.label[1] + 'px', top: e.label[2] + 'px' });
+    archEl.appendChild(e.labelEl);
+  }
+}
+
+// ======================= 渲染 =======================
+function renderLogo(t) {
+  // 片头 0–4.5s 与片尾 66.5–70s 共用艺术字，片尾节奏更快
+  const isOutro = t >= OUTRO[0] - 0.2;
+  const s = isOutro ? (t - OUTRO[0]) * 1.5 + 0.3 : t;
+  const vis = isOutro ? out(span(t, OUTRO[0], OUTRO[0] + .4)) * (1 - ease(span(t, DURATION - .35, DURATION))) * 1
+                      : 1 - ease(span(t, 3.9, 4.45));
+  const lift = isOutro ? 0 : ease(span(t, 3.9, 4.45));
+  set($('logo'), { opacity: vis, display: vis > 0 ? 'block' : 'none',
+    transform: `translateY(${(isOutro ? -40 : 0) - lift * 30}px) scale(${(isOutro ? .86 : 1) - lift * .05})` });
+  if (vis <= 0) return;
+
+  letters.forEach((el, i) => {
+    const k = out(span(s, .25 + i * .07, .85 + i * .07));
+    set(el, { opacity: k, transform: `translateY(${(1 - k) * 70}px) rotate(${(1 - k) * (i % 2 ? 6 : -6)}deg)`, filter: `blur(${(1 - k) * 14}px)` });
+  });
+  const ui = back(span(s, 1.05, 1.6));
+  set($('logoUI'), { opacity: clamp(ui * 2), transform: `scale(${lerp(.3, 1, ui)}) rotate(${(1 - ui) * -12}deg)` });
+  $('logoShine').style.backgroundPosition = `${lerp(120, -20, ease(span(s, 1.7, 2.6)))}% 0`;
+  set($('logoGlow'), { opacity: out(span(s, .2, 1.4)), transform: `scale(${lerp(.8, 1, out(span(s, .2, 1.6)))})` });
+
+  const draw = ease(span(s, 1.0, 2.2));
+  set($('logoLine'), { strokeDasharray: logoLen, strokeDashoffset: logoLen * (1 - draw), opacity: .9 });
+  const p = $('logoLine').getPointAtLength(logoLen * draw);
+  for (const id of ['logoDot', 'logoDotHalo']) { $(id).setAttribute('cx', p.x); $(id).setAttribute('cy', p.y); }
+  $('logoDot').style.opacity = draw > 0 ? 1 : 0;
+  const pulse = (s * 1.4) % 1;
+  set($('logoDotHalo'), { opacity: draw >= 1 ? 1 - pulse : 0 });
+  $('logoDotHalo').setAttribute('r', 9 + pulse * 18);
+
+  $('logoSub').textContent = SUBTITLE;
+  set($('logoSub'), { opacity: out(span(s, 1.7, 2.4)), letterSpacing: `${lerp(.6, .32, out(span(s, 1.7, 2.6)))}em` });
+  set($('logoMeta'), { opacity: isOutro ? out(span(s, 2.2, 2.8)) : 0 });
+}
+
+function sceneText(id, t0, t1, t, holdEnd = 0) {
+  const el = $('t-' + id);
+  const k = window4(t, t0 - .25, t0 + .35, t1 - .45 + holdEnd, t1 + holdEnd);
+  set(el, { opacity: k, display: k > 0 ? 'block' : 'none', transform: `translateX(${(1 - out(span(t, t0 - .25, t0 + .45))) * -40}px)` });
+}
+
+function renderWhat(t) {
+  const [t0, t1] = INTRO.what, l = t - t0;
+  const vis = window4(t, t0 - .25, t0 + .35, t1 - .5, t1);
+  set($('what'), { opacity: vis, display: vis > 0 ? 'block' : 'none' });
+  if (vis <= 0) return;
+  const k = out(span(l, -.15, .65));
+  set($('whatFig'), { opacity: k, transform: `translateY(${(1 - k) * 60}px)` });
+  $('whatFig').firstChild.style.transform = `scale(${lerp(1, 1.07, ease(span(l, .5, 6.5)))})`;
+  [...$('whatStats').children].forEach((c, i) => {
+    const a = out(span(l, 1.2 + i * .18, 1.7 + i * .18));
+    set(c, { opacity: a, transform: `translateY(${(1 - a) * 30}px)` });
+  });
+}
+
+function renderCan(t) {
+  const [t0, t1] = INTRO.can, l = t - t0;
+  const vis = window4(t, t0 - .25, t0 + .15, t1 - .5, t1);
+  set($('can'), { opacity: vis, display: vis > 0 ? 'block' : 'none' });
+  if (vis <= 0) return;
+  [...$('canGrid').children].forEach((c, i) => {
+    const a = out(span(l, -.15 + i * .25, .45 + i * .25));
+    // 依次轻微“点亮”每张卡片
+    const glow = Math.max(0, 1 - Math.abs(l - (2.6 + i * .8)) / .5);
+    set(c, { opacity: a, transform: `translateY(${(1 - a) * 50}px) scale(${1 + glow * .015})`,
+      boxShadow: `0 30px 70px -24px rgba(15,23,42,.25), 0 0 0 ${1 + glow * 2}px rgba(18,165,148,${.06 + glow * .6})` });
+  });
+}
+
+function renderArch(t) {
+  const [t0, t1] = INTRO.arch, l = t - t0;
+  const vis = window4(t, t0 - .25, t0 + .05, t1 - .5, t1);
+  set($('arch'), { opacity: vis, display: vis > 0 ? 'block' : 'none' });
+  if (vis <= 0) return;
+  for (const n of ARCH_NODES) {
+    const a = out(span(l, n.at - .25, n.at + .25));
+    set(n.el, { opacity: a, transform: `translateY(${(1 - a) * 24}px) scale(${lerp(.94, 1, a)})` });
+  }
+  ARCH_EDGES.forEach((e, i) => {
+    const k = ease(span(l, e.at[0], e.at[1]));
+    if (e.dash) set(e.el, { strokeDasharray: '9 9', strokeDashoffset: -l * 30, opacity: k });
+    else set(e.el, { strokeDasharray: e.len, strokeDashoffset: e.len * (1 - k), opacity: k > 0 ? 1 : 0 });
+    if (k >= .98) e.el.setAttribute('marker-end', 'url(#ah)'); else e.el.removeAttribute('marker-end');
+    if (e.labelEl) set(e.labelEl, { opacity: out(span(l, e.at[1] - .1, e.at[1] + .3)) });
+    // 数据流动的小圆点
+    const flowStart = 5.4 + (i % 3) * .15;
+    const f = ((l - flowStart) / 1.4 + i * .23) % 1;
+    const fv = l > flowStart ? Math.sin(Math.PI * f) : 0;
+    const p = e.el.getPointAtLength(e.len * (e.dash ? 1 - f : f));
+    e.dot.setAttribute('cx', p.x); e.dot.setAttribute('cy', p.y);
+    e.dot.style.opacity = fv;
+  });
+}
+
+function renderWindow(t) {
+  const winIn = out(span(t, WIN_IN - .5, WIN_IN + .3));
+  const winOut = ease(span(t, WIN_OUT, WIN_OUT + .9));
+  const vis = winIn * (1 - winOut);
+  set($('win'), { opacity: vis, display: vis > 0 ? 'block' : 'none',
+    transform: `translateY(${(1 - winIn) * 120 - winOut * 40}px) scale(${lerp(.96, 1, winIn) - winOut * .08})` });
+
+  let cursor = null;
+  SHOTS.forEach((shot, i) => {
+    const local = t - shot.t0, len = shot.t1 - shot.t0, last = i === SHOTS.length - 1;
+    const shown = vis > 0 && t >= shot.t0 - (i === 0 ? 1 : 0) && (t < shot.t1 + .35 || last);
+    const fade = i === 0 ? 1 : clamp(local / .35);
+    const cam = camAt(shot.cam, clamp(local, 0, len));
+    const [x0, y0, s] = proj(cam, 0, 0);
+    set(shot.img, { display: shown ? 'block' : 'none', opacity: fade, zIndex: i, transform: `translate(${x0}px, ${y0}px) scale(${s})` });
+    sceneText(shot.id, shot.t0, shot.t1, t, last ? .5 : 0);
+
+    for (const m of shot.marks) {
+      const a = window4(local, m.at[0], m.at[0] + .3, m.at[1] - .25, m.at[1]);
+      const active = shown && local > m.at[0] - .1 && local < m.at[1] + .1;
+      if (!active) { m.el.style.display = 'none'; if (m.tagEl) m.tagEl.style.display = 'none'; continue; }
+      if (m.ring) {
+        const [cx, cy, r] = m.ring; const [px, py, sc] = proj(cam, cx, cy);
+        const pulse = 1 + .35 * ((local * 1.6) % 1), rr = r * sc * pulse;
+        set(m.el, { display: 'block', opacity: a * (1.3 - (pulse - 1) * 2), left: px - rr + 'px', top: py - rr + 'px', width: rr * 2 + 'px', height: rr * 2 + 'px' });
+        set(m.tagEl, { display: 'block', opacity: a, left: px + r * sc + 18 + 'px', top: py - 22 + 'px' });
+        continue;
+      }
+      const [l, tp, r, b] = m.box, pad = 6;
+      const [ax, ay] = proj(cam, l, tp), [bx, by] = proj(cam, r, b);
+      set(m.el, { display: 'block', opacity: a, left: ax - pad + 'px', top: ay - pad + 'px', width: bx - ax + pad * 2 + 'px', height: by - ay + pad * 2 + 'px' });
+      if (m.tagEl) {
+        const above = m.side === 'top' || by + 60 > VH;
+        const fixed = m.tagAt && proj(cam, ...m.tagAt);
+        set(m.tagEl, { display: 'block', opacity: a,
+          left: (fixed ? fixed[0] : clamp(ax - pad, 12, VW - 620)) + 'px',
+          top: (fixed ? fixed[1] : above ? Math.max(8, ay - pad - 50) : by + pad + 12) + 'px' });
+      }
+    }
+    if (shot.id === 'stylized') ['c0', 'c1', 'c2', 'c3'].forEach((id, k) => {
+      const a = out(span(local, shot.marks[k].at[0], shot.marks[k].at[0] + .4));
+      set($(id), { opacity: .15 + .85 * a, transform: `translateX(${(1 - a) * -16}px)` });
+    });
+
+    // 镜头末尾：光标移到下一步要点的位置并点击
+    if (shot.click && local > len - 1.1 && local < len + .15) {
+      const [tx, ty] = proj(camAt(shot.cam, len), ...TARGET[shot.click]);
+      const k = ease(span(local, len - 1.1, len - .45));
+      cursor = { x: lerp(tx - 240, tx, k), y: lerp(ty + 280, ty, k), down: span(local, len - .4, len + .1) };
+    }
+  });
+
+  const vx = 560, vy = 118 + 44;
+  if (cursor) {
+    set($('cursor'), { display: 'block', left: vx + cursor.x - 4 + 'px', top: vy + cursor.y - 2 + 'px',
+      transform: `scale(${cursor.down > 0 && cursor.down < .4 ? .85 : 1})` });
+    set($('click'), { display: cursor.down > 0 ? 'block' : 'none', left: vx + cursor.x + 'px', top: vy + cursor.y + 'px',
+      opacity: 1 - cursor.down, transform: `scale(${.4 + cursor.down * 1.2})` });
+  } else {
+    $('cursor').style.display = 'none'; $('click').style.display = 'none';
+  }
+}
+
+function render(t) {
+  renderLogo(t);
+  renderWhat(t);
+  renderCan(t);
+  renderArch(t);
+  renderWindow(t);
+  for (const id of ['what', 'can', 'arch']) sceneText(id, ...INTRO[id], t);
+
+  // 章节进度与底部署名
+  const navOn = window4(t, INTRO.what[0], INTRO.what[0] + .5, OUTRO[0] - .5, OUTRO[0]);
+  set($('chapters'), { opacity: navOn });
+  CHAPTERS.forEach(([, a, b], i) => {
+    const d = $('chapters').children[i];
+    d.className = t >= a && t < b ? 'on' : '';
+    d.querySelector('b').style.width = `${span(t, a, b) * 100}%`;
+  });
+  set($('note'), { opacity: .9 * Math.max(navOn, out(span(t, OUTRO[0] + .8, OUTRO[0] + 1.4))) });
+}
+
+window.render = render;
+window.DURATION = DURATION;
+window.ready = Promise.all([document.fonts.ready, ...[...document.images].map(img => img.decode().catch(() => {}))])
+  .then(() => layoutLogo());
+
+// 直接打开时循环播放；?t=秒 定格；?export 由导出脚本逐帧驱动
+const q = new URLSearchParams(location.search);
+if (q.has('t')) window.ready.then(() => render(+q.get('t')));
+else if (!q.has('export')) window.ready.then(() => {
+  const start = performance.now();
+  const tick = now => { render(((now - start) / 1000) % DURATION); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+});
+</script>
+</body>
+</html>
