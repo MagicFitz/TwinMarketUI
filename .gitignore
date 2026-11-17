@@ -31,6 +31,7 @@ MANIFEST
 
 # Virtual environments
 venv/
+.venv/
 env/
 ENV/
 
@@ -50,30 +51,25 @@ ehthumbs.db
 Thumbs.db
 
 # 项目特定
-trader/cache/
+backend/simulation/trader/cache/
 *.log
 *.tmp
 *.temp
 # 配置文件(可能包含API密钥)
-config/api.yaml
-config/embedding.yaml
+backend/config/api.yaml
+backend/config/embedding.yaml
 # *.yaml
 # *.yml
 
 logs*/data/guba_data.csv
-backend/data/
-# 旧 Studio Registry 是本地数据；迁移时可通过 TWINMARKET_REGISTRY_PATH 继续使用。
-studio/backend/data/
+# 后端 Registry 等本地数据。
+backend/server/data/
 
 # 模拟运行产物（日志、数据库），每次运行都会生成，不进仓库。
 runs/
 # Local financial-data credentials and licensed data; never publish these inputs.
-config/data_sources.yaml
-data/market_staging/
-data/market_snapshots/
+backend/config/data_sources.yaml
+backend/data/market_staging/
+backend/data/market_snapshots/
 # Market data service home: warehouse, raw responses and bundles (licensed data).
 mds_data/
-
-# Frontend source helpers must not be hidden by the Python lib/ rule.
-!frontend/src/lib/
-!frontend/src/lib/**

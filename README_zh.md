@@ -1,87 +1,134 @@
-# TwinMarket - A股市场模拟系统（1.0版本）
-
-<p align="center">[ <a href="README.md">English</a> | <a href="README_zh.md">中文</a> ]</p>
-
 <div align="center">
-  <img src="assets/img/TwinMarket.png" alt="TwinMarket Overview" width="100%" style="max-width: 1000px; margin: 0 auto; display: block;">
+  <img src="assets/logo/TwinMarketUI_banner.svg" alt="TwinMarketUI" width="520">
+
+  <p><strong>TwinMarket 市场模拟研究工作台</strong></p>
+
+  [![README](https://img.shields.io/badge/README-English-green.svg)](README.md)
+  [![README_zh](https://img.shields.io/badge/README-中文-green.svg)](README_zh.md)
+  [![Paper](https://img.shields.io/badge/arXiv-2502.01506-b31b1b.svg)](https://arxiv.org/abs/2502.01506)
+  [![Upstream](https://img.shields.io/badge/Upstream-TwinMarket-blue.svg)](https://github.com/FreedomIntelligence/TwinMarket)
 </div>
 
-## 📖 项目简介
+TwinMarketUI 把 [TwinMarket](https://github.com/FreedomIntelligence/TwinMarket) 变成一个在本地浏览器里使用的研究工作台。TwinMarket 是基于大语言模型的多智能体股票市场模拟（NeurIPS 2025）。有了 TwinMarketUI，不用改脚本，就能配置实验、在后台运行、按交易日跟踪进度，并查看结果。
 
-TwinMarket 是一个创新的股票交易模拟系统，通过集成大语言模型（LLM）技术，模拟真实的股票市场交易环境。系统通过多智能体协作，实现了包括个性化交易策略、社交网络互动、新闻信息分析等在内的全方位市场模拟。
+<div align="center">
+  <img src="frontend/src/assets/landing/studio-run-results.jpg" alt="Research Studio 中一次已完成实验的结果页" width="100%">
+</div>
 
-### 🎯 核心特性
+## 功能
 
-- **🤖 智能交易代理**：基于 LLM 的个性化交易决策系统
-- **🌐 社交网络模拟**：完整的论坛互动和用户关系网络
-- **📊 多维度分析**：整合技术指标、新闻信息、市场情绪等多种因素
-- **🎲 行为金融建模**：考虑处置效应、彩票偏好等行为金融因素
-- **⚡ 高性能并发**：支持大规模用户并发交易模拟
-- **📈 实时撮合引擎**：完整的订单撮合和交易执行系统
+| 空间 | 内容 |
+| --- | --- |
+| **实验** | 选择模拟区间、Agent 数量、并发数和市场模板，也可以复制已有实验。实验可以运行、停止、重试，或从断点续跑。每个实验有一个工作台，查看进度、Agent、结果和日志。 |
+| **智能体** | 浏览基于真实用户画像构建的投资者群体，查看每个 Agent 的风格、行为偏差和持仓。 |
+| **市场** | 管理交易机制和行业指数资产包，用 Tushare 同步收盘行情，发布可复现、不可变的市场快照。 |
+| **设置** | 配置并测试语言模型和向量模型，管理数据源凭据。 |
+| **文档** | 在应用内阅读项目文档。 |
 
-## 🚀 快速开始
+模拟内核与 TwinMarket 相同：Agent 在论坛式社交网络中交流，在订单驱动的市场中交易，模拟结果能复现尖峰厚尾、波动聚集等典型事实。
+
+## 架构
+
+```text
+浏览器 ──► frontend/  （React + Vite，:5173）
+              │
+              ├──► backend/server/          FastAPI 控制面（:8766）
+              │        Run Registry、查询接口、实时运行事件
+              │        └─► worker ─► python -m simulation（每个 Run 一个进程）
+              │
+              └──► backend/market_service/  市场数据服务（:8100）
+                       数据版本、市场模板、冻结的市场资产包
+```
+
+每个 Run 在 `backend/runs/<run_id>/` 下有一个独立目录，里面有冻结的输入、`manifest.json`、运行事件日志和全部结果文件。运行结束后，可以随时回看，也可以续跑。
+
+## 快速开始
+
+**环境要求：** Python 3.10+、Node.js 18+、一个 OpenAI 兼容的对话模型 API 和一个向量模型 API。
 
 ```bash
-# 自行配置 API 与 embedding 模型：
+cd backend
+
+# 1. Python 环境
+python3 -m venv .venv
+.venv/bin/python -m pip install -r server/requirements.txt
+
+# 2. 模型配置（之后也可以在“设置”页面修改）
 cp config/api_example.yaml config/api.yaml
 cp config/embedding_example.yaml config/embedding.yaml
 
-# 1000 用户运行
-bash script/run.sh
-
-# 100 用户运行
-bash script/run_100.sh
+# 3. 同时启动市场数据服务、后端和前端
+scripts/dev.sh
 ```
 
-使用学院 `qwen3-30b` vLLM 服务、重建新闻向量索引、运行 10 个交易日以及实时观察进度，请参阅[模拟运行指南](docs/SIMULATION_GUIDE_ZH.md)。
+打开 <http://127.0.0.1:5173/studio/> 创建实验。`dev.sh` 第一次运行时会自动安装前端依赖，按 Ctrl-C 会停止全部三个进程。端口可以用 `MDS_PORT`、`BACKEND_PORT`、`FRONTEND_PORT` 修改。
 
-## 📝 开发指南
+仓库自带的 2023 年数据足够在默认的 `legacy` 市场模式下运行实验。如果要把近期行情同步进市场模板，需要配置 Tushare Token：设置环境变量 `TUSHARE_TOKEN`，或者在“设置”页面填写。
 
-### 扩展交易策略
+### 命令行运行
 
-在 `trader/trading_agent.py` 中实现新的交易策略：
+也可以不用界面，直接运行模拟：
 
-```python
-def custom_strategy(self, market_data):
-    """自定义交易策略"""
-    # 实现你的策略逻辑
-    pass
+```bash
+cd backend
+USER_COUNT=10 START_DATE=2023-06-15 END_DATE=2023-06-16 bash scripts/run.sh
 ```
 
-### 添加新的评估指标
+全部参数，以及监控和续跑方法，见 [docs/SIMULATION_GUIDE_ZH.md](docs/SIMULATION_GUIDE_ZH.md)。
 
-在 `trader/utility.py` 中添加评估函数：
+## 目录结构
 
-```python
-def calculate_custom_metric(trades):
-    """计算自定义指标"""
-    # 实现指标计算
-    pass
+```text
+frontend/            Research Studio 前端（React、Radix Themes、Vite）
+backend/             全部 Python 代码；Python 命令都在这里执行
+  server/            FastAPI 控制面：Run Registry、Worker、查询接口
+  simulation/        仿真核心
+    engine.py        每日模拟主循环（入口：python -m simulation）
+    agent.py         大模型客户端：Provider 适配、上下文预算、重试
+    trader/          交易 Agent、Prompt、撮合引擎
+    stores/          用户、论坛和新闻数据库
+    runtime/         运行事件、事件存储、快照
+  market_service/    市场数据服务
+  scripts/           dev.sh、run.sh、check.sh 等命令行工具
+  config/            模型与数据源配置
+  data/              模拟输入（用户模板、行情、新闻索引）
+docs/                项目文档，同时在应用内“文档”页展示
 ```
 
-## 📚 使用 TwinMarket 的优秀论文
+## 开发
 
-欢迎社区贡献。如果你的论文使用了 TwinMarket，欢迎提交 PR 添加到这里。
+```bash
+cd backend
+scripts/check.sh                 # 编译检查 + 仿真、市场数据服务、后端的单元测试
+```
 
-| 标题 | 代码 | 论文 |
-| --- | --- | --- |
-| Interpreting Emergent Extreme Events in Multi-Agent Systems | https://github.com/mjl0613ddm/IEEE | https://arxiv.org/abs/2601.20538 |
+```bash
+cd frontend
+npm run build                    # 生产构建
+npm run test:sites               # Sites Worker 测试
+```
 
-## 🧾 引用
+延伸阅读：
+
+- [代码架构与扩展指南](docs/CODE_ARCHITECTURE_GUIDE_ZH.md)
+- [市场数据服务设计](docs/MARKET_DATA_SERVICE_DESIGN_ZH.md)
+- [运行时实现说明](docs/P0_RUNTIME_IMPLEMENTATION_ZH.md)
+
+## 致谢与引用
+
+TwinMarketUI 基于 FreedomIntelligence 的 [TwinMarket](https://github.com/FreedomIntelligence/TwinMarket)。模拟模型、数据和研究结论都来自原论文，使用时请引用：
 
 ```bibtex
 @inproceedings{yang2025twinmarket,
-      title={TwinMarket: A Scalable Behavioral and Social Simulation for Financial Markets},
-      author={Yuzhe Yang and Yifei Zhang and Minghao Wu and Kaidi Zhang and
-              Yunmiao Zhang and Honghai Yu and Yan Hu and Benyou Wang},
-      booktitle={The Thirty-ninth Annual Conference on Neural Information Processing Systems (NeurIPS)},
-      series={NeurIPS},
-      volume={39},
-      year={2025},
-      url={https://arxiv.org/abs/2502.01506},
+  title     = {TwinMarket: A Scalable Behavioral and Social Simulation for Financial Markets},
+  author    = {Yuzhe Yang and Yifei Zhang and Minghao Wu and Kaidi Zhang and
+               Yunmiao Zhang and Honghai Yu and Yan Hu and Benyou Wang},
+  booktitle = {The Thirty-ninth Annual Conference on Neural Information Processing Systems (NeurIPS)},
+  year      = {2025},
+  url       = {https://arxiv.org/abs/2502.01506}
 }
 ```
 
-## 📄 许可证
+## 许可证
 
-本项目采用 MIT License，详见 `LICENSE`。
+MIT，见 [LICENSE](LICENSE)。

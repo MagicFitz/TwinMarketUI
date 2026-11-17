@@ -33,7 +33,7 @@
 当前仓库实际上包含两套彼此独立的体验：
 
 1. `index.html` 是静态论文/项目展示页，使用 Chart.js 和自绘 Canvas 展示示例内容；它不读取模拟运行数据。
-2. `simulation.py` 是真实模拟入口，通过 CLI 参数启动；`script/monitor_simulation.py` 每 5 秒只读 SQLite、日志和产物目录，能够输出终端文本或 JSON 快照。
+2. `backend/simulation/engine.py` 是真实模拟入口，通过 CLI 参数启动；`backend/scripts/monitor_simulation.py` 每 5 秒只读 SQLite、日志和产物目录，能够输出终端文本或 JSON 快照。
 
 所以新 UI 的产品定位应是 **研究实验工作台**，而不是对当前静态主页做换肤。
 
@@ -41,7 +41,7 @@
 
 | 阶段 | 当前真实数据 | 主要来源 | UI 含义 |
 | --- | --- | --- | --- |
-| 初始化数据 | 日期范围、用户数、并发数、激活概率、技术交易者概率、关系图阈值、时间衰减、模型配置、belief、用户模板、行情、交易日历、新闻索引 | `simulation.py` 参数、YAML、CSV、SQLite、PKL/FAISS | 能否安全、可复现地启动实验 |
+| 初始化数据 | 日期范围、用户数、并发数、激活概率、技术交易者概率、关系图阈值、时间衰减、模型配置、belief、用户模板、行情、交易日历、新闻索引 | `backend/simulation/engine.py` 参数、YAML、CSV、SQLite、PKL/FAISS | 能否安全、可复现地启动实验 |
 | 过程数据 | 当前自然日/交易日、完成到哪一天、用户处理、LLM 对话、关系图、发帖/互动、交易决策、撮合、数据库快照、产物数量、日志新鲜度和错误 | `simulation.log`、两个 SQLite、每日 JSON、图文件、`monitor_simulation.py` | 实验是否推进、卡在哪里、是否需要人工处理 |
 | 结果数据 | 行情与技术指标、组合价值、收益、交易明细、成交汇总、大单净流入、订单簿、belief 演化、论坛内容、互动、动态图网络、模型对话与全部可复现产物 | `Profiles`、`StockData`、`TradingDetails`、论坛表、`simulation_results/`、records、graphs | 研究结论、机制解释、复现与导出 |
 
@@ -179,7 +179,7 @@ Experiment 是研究配置的容器，Run 是一次执行。同一 Experiment �
 | View | 主要内容与操作 | 组件与数据支持 |
 | --- | --- | --- |
 | Group Library | 群体名称、成员数、策略/态度分布、版本、被哪些实验使用；搜索、创建、导入、复制、归档 | Card、Table、Tag、Input；当前只有模板与运行内用户子集，没有 Group 注册表 |
-| Group Editor | 来源选择、成员抽样、人数、画像与策略配置、belief 覆盖校验、差异复核 | 分步 Form、Table、Drawer；`prepare_simulation_run.py` 已提供固定排序子集准备能力，随机/分层抽样为新增 |
+| Group Editor | 来源选择、成员抽样、人数、画像与策略配置、belief 覆盖校验、差异复核 | 分步 Form、Table、Drawer；`prepare_run.py` 已提供固定排序子集准备能力，随机/分层抽样为新增 |
 | Group Detail | 成员表、行为特征分布、策略、初始 belief、版本历史和引用实验 | ECharts 分布图 + Table；Profiles、Strategy、belief CSV 支持首版只读 |
 | Member Inspector | 单个成员人设、策略、行为标签、初始 belief；提示词折叠查看 | Drawer + Tabs；初始资产配置需校验所绑定环境的资产代码 |
 | Behavioral Tests | 测试任务入口、能力说明；未来涵盖处置效应、彩票偏好等实验方案和结果 | 首版标注“规划中”，不展示虚构测试分数或启用执行按钮 |
@@ -222,7 +222,7 @@ Experiment 是研究配置的容器，Run 是一次执行。同一 Experiment �
 
 当前代码把人设、初始持仓、市场历史、运行结果混合存放在用户数据库中。产品层可以先加只读适配，不能宣称代码已经具有独立 Group/Environment/Connector 注册表。建议新增元数据层管理 ID、版本、来源、被引用关系；启动时再将选中的不可变版本组装到独立运行目录，逐步解耦原有格式。
 
-第一版原型将已有 `logs_*` 目录标注为导入实验，将 `data/sys_1000.db` 标注为本地群体模板，将 StockProfile/StockData 与当前撮合实现标注为本地环境预览。尚未持久化的资源不显示虚构的版本号、同步成功记录或创建时间。
+第一版原型将已有 `logs_*` 目录标注为导入实验，将 `backend/data/sys_1000.db` 标注为本地群体模板，将 StockProfile/StockData 与当前撮合实现标注为本地环境预览。尚未持久化的资源不显示虚构的版本号、同步成功记录或创建时间。
 
 ### 4.7 实验运行状态机
 
@@ -583,7 +583,7 @@ type TwinIconName =
 - ECharts；复杂网络阶段再增加 G6；
 - TanStack Table 仅提供排序、筛选、分页、列状态和虚拟化逻辑，不带另一套视觉样式。
 
-以上为生产实现建议。当前 `studio/` 只读原型为 React 19 + JSX + Vite，使用轻量 History 路由与可取消、禁止重叠请求的轮询 hook；使用语义化 HTML 表格实现服务端分页，避免把已分页数据再次交给客户端分页。Python 标准库 HTTPServer 仅监听本机，不导入或启动模拟引擎。后续产品化再迁移到 TypeScript、React Router、TanStack Query 与 FastAPI。
+以上为生产实现建议。当前 `frontend/` 只读原型为 React 19 + JSX + Vite，使用轻量 History 路由与可取消、禁止重叠请求的轮询 hook；使用语义化 HTML 表格实现服务端分页，避免把已分页数据再次交给客户端分页。Python 标准库 HTTPServer 仅监听本机，不导入或启动模拟引擎。后续产品化再迁移到 TypeScript、React Router、TanStack Query 与 FastAPI。
 
 ### 11.2 Python 服务层
 
@@ -737,7 +737,7 @@ type RunSnapshot = {
 
 ## 16. 四空间只读原型（已实现）
 
-原型代码位于 `studio/`，入口 `/studio/Experiment`，保留根目录论文展示页。
+原型代码位于 `frontend/`，入口 `/studio/Experiment`，保留根目录论文展示页。
 
 | 空间 | 本版可浏览与交互 | 仍为规划 |
 | --- | --- | --- |
@@ -748,18 +748,18 @@ type RunSnapshot = {
 
 所有写入入口均打开“规划入口 · 不执行操作”说明，不调用任何写 API。API 使用只读 SQLite、白名单配置/事件提取，不反序列化 PKL，不触发 LLM 或金融数据请求。实际监控状态与页面读取状态分离，断连保留上次快照。
 
-验证包括 Python 只读/路径/脱敏/日期状态测试、Chrome 四路由交互与轮询/断连检查、1440/1024/390 宽度截图。结果与限制见 `studio/README.md` 和 `studio/design-qa.md`。这验证了产品分区与阅读原型，不代表后端资源管理、长时间监控可靠性或完整实验分析已完成。
+验证包括 Python 只读/路径/脱敏/日期状态测试、Chrome 四路由交互与轮询/断连检查、1440/1024/390 宽度截图。结果与限制见 `frontend/README.md` 和 `frontend/design-qa.md`。这验证了产品分区与阅读原型，不代表后端资源管理、长时间监控可靠性或完整实验分析已完成。
 
 ## 17. 参考资料
 
 ### TwinMarket 当前代码
 
-- `simulation.py`：运行参数、每日流程和产物写入；
-- `script/monitor_simulation.py`：当前只读运行快照；
-- `trader/matching_engine.py`：撮合、每日汇总、成交、大单资金和订单簿；
-- `util/UserDB.py`：用户画像、交易和 NetworkX 关系图；
-- `util/ForumDB.py`：帖子、互动和引用；
-- `data/sys_1000.db`：当前 SQLite 数据结构；
+- `backend/simulation/engine.py`：运行参数、每日流程和产物写入；
+- `backend/scripts/monitor_simulation.py`：当前只读运行快照；
+- `backend/simulation/trader/matching_engine.py`：撮合、每日汇总、成交、大单资金和订单簿；
+- `backend/simulation/stores/UserDB.py`：用户画像、交易和 NetworkX 关系图；
+- `backend/simulation/stores/ForumDB.py`：帖子、互动和引用；
+- `backend/data/sys_1000.db`：当前 SQLite 数据结构；
 - `index.html`、`assets/js/charts.js`：现有静态项目页和示例图表。
 
 ### 外部项目与组件

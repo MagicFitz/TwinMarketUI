@@ -14,30 +14,32 @@ order: 11
 激活已经初始化好的 Python 3.12 环境：
 
 ```bash
-source venv/bin/activate
-uv pip check --python venv/bin/python
+cd backend
+source .venv/bin/activate
+uv pip check --python .venv/bin/python
 ```
 
 项目需要以下核心输入：
 
-- `data/sys_1000.db`：1000 用户模板、历史交易和截至 2023-06-14 的市场状态。
-- `data/stock_data.csv`：后续真实行情。
-- `data/trading_days.csv`：交易日历。
-- `data/sorted_impact_news.pkl`：按日整理的新闻。
-- `util/belief/belief_1000_0129.csv`：与 1000 用户模板匹配的初始 belief。
-- `data/InformationDB_news_2023/`：使用 `bge-m3` 生成的新闻 FAISS 索引。
+- `backend/data/sys_1000.db`：1000 用户模板、历史交易和截至 2023-06-14 的市场状态。
+- `backend/data/stock_data.csv`：后续真实行情。
+- `backend/data/trading_days.csv`：交易日历。
+- `backend/data/sorted_impact_news.pkl`：按日整理的新闻。
+- `backend/data/belief/belief_1000_0129.csv`：与 1000 用户模板匹配的初始 belief。
+- `backend/data/InformationDB_news_2023/`：使用 `bge-m3` 生成的新闻 FAISS 索引。
 
 可选地重新生成新闻索引：
 
 ```bash
-python script/build_news_index.py --batch-size 64 --force
+cd backend
+python scripts/build_news_index.py --batch-size 64 --force
 ```
 
 生成后应看到 3439 个 1024 维向量。原新闻列表的另外两个元素是 `NaN`，不会进入索引。
 
 ## 2. 聊天模型配置
 
-`config/api.yaml` 已配置为学院的 OpenAI 兼容 vLLM 服务：
+`backend/config/api.yaml` 已配置为学院的 OpenAI 兼容 vLLM 服务：
 
 ```yaml
 api_type: openai
@@ -66,16 +68,16 @@ PY
 
 ## 3. 用户数量与运行参数
 
-`script/run.sh` 是通用运行入口，模拟用户数量由 `USER_COUNT` 控制。它会从 `data/sys_1000.db` 确定性选择指定数量的用户，并生成用户 ID 完全匹配的 belief 文件。
+`backend/scripts/run.sh` 是通用运行入口，模拟用户数量由 `USER_COUNT` 控制。它会从 `backend/data/sys_1000.db` 确定性选择指定数量的用户，并生成用户 ID 完全匹配的 belief 文件。
 
-> 不要把 `util/belief/belief_100.csv` 与 `sys_1000.db` 直接组合；两者的用户 ID 不匹配。运行脚本使用 `belief_1000_0129.csv` 筛选匹配记录。
+> 不要把 `backend/data/belief/belief_100.csv` 与 `sys_1000.db` 直接组合；两者的用户 ID 不匹配。运行脚本使用 `belief_1000_0129.csv` 筛选匹配记录。
 
 可配置变量如下：
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `USER_COUNT` | `1000` | 模拟用户数，范围 1–1000 |
-| `RUN_ID` | `run_<UTC 时间>-<pid>` | 运行唯一标识；输出固定为 `runs/<RUN_ID>` |
+| `RUN_ID` | `run_<UTC 时间>-<pid>` | 运行唯一标识；输出固定为 `backend/runs/<RUN_ID>` |
 | `RANDOM_SEED` | `20260916` | Python 随机数种子，写入运行清单 |
 | `RESUME_DATE` | 空 | 续跑日期，必须等于 state 记录的 `checkpoint.next_date` |
 | `START_DATE` | `2023-06-15` | 全新模拟开始日期 |
@@ -84,9 +86,9 @@ PY
 | `ACTIVATE_PROB` | `0.8` | 每日用户激活概率 |
 | `PROB_OF_TECHNICAL` | `0.5` | 技术面噪声交易概率 |
 | `PREPARE_ONLY` | `0` | 设为 `1` 时只生成用户数据库和 belief，不启动模拟 |
-| `CONFIG_PATH` | `config/api.yaml` | 聊天模型配置 |
+| `CONFIG_PATH` | `backend/config/api.yaml` | 聊天模型配置 |
 
-运行目录由脚本原子创建，固定为 `./runs/<RUN_ID>`；相同 `RUN_ID` 会被拒绝，不能通过 `RUN_DIR` 改写位置。每次创建均保存 `manifest.json`（脱敏后的完整模型配置、数据/Agent Group/市场输入指纹、代码版本、种子和启动命令摘要）及 `state.json`。脚本不会修改 `data/sys_1000.db`。
+运行目录由脚本原子创建，固定为 `backend/runs/<RUN_ID>`；相同 `RUN_ID` 会被拒绝，不能通过 `RUN_DIR` 改写位置。每次创建均保存 `manifest.json`（脱敏后的完整模型配置、数据/Agent Group/市场输入指纹、代码版本、种子和启动命令摘要）及 `state.json`。脚本不会修改 `backend/data/sys_1000.db`。
 
 ## 4. 运行 10 个交易日
 
@@ -95,34 +97,39 @@ PY
 1000 用户运行：
 
 ```bash
+cd backend
 USER_COUNT=1000 \
 RUN_ID="market_1000_baseline" \
 MAX_WORKERS=32 \
-bash script/run.sh
+bash scripts/run.sh
 ```
 
 100 用户快捷运行：
 
 ```bash
-bash script/run_100.sh
+cd backend
+bash scripts/run_100.sh
 ```
 
 也可以覆盖输出目录或并发数：
 
 ```bash
-RUN_ID="market_100_experiment_02" MAX_WORKERS=64 bash script/run_100.sh
+cd backend
+RUN_ID="market_100_experiment_02" MAX_WORKERS=64 bash scripts/run_100.sh
 ```
 
 默认 `ACTIVATE_PROB=0.8` 表示每天约 80% 的用户调用模型。首次验证吞吐时可降为 `0.05`：
 
 ```bash
-ACTIVATE_PROB=0.05 RUN_ID="market_100_smoke" bash script/run_100.sh
+cd backend
+ACTIVATE_PROB=0.05 RUN_ID="market_100_smoke" bash scripts/run_100.sh
 ```
 
 如果想先检查生成的 100 用户数据而不启动模型：
 
 ```bash
-PREPARE_ONLY=1 RUN_ID="market_100_prepared" bash script/run_100.sh
+cd backend
+PREPARE_ONLY=1 RUN_ID="market_100_prepared" bash scripts/run_100.sh
 ```
 
 服务宣称的请求吞吐不等同于本地最优线程数。建议从 32 开始，确认本机数据库写入和日志状态稳定后，再逐级增加到 80、160 或更高。
@@ -132,8 +139,9 @@ PREPARE_ONLY=1 RUN_ID="market_100_prepared" bash script/run_100.sh
 在另一个终端运行：
 
 ```bash
-source venv/bin/activate
-python script/monitor_simulation.py \
+cd backend
+source .venv/bin/activate
+python scripts/monitor_simulation.py \
   --log-dir "logs_100_qwen3_30b_10td" \
   --start-date "2023-06-15" \
   --end-date "2023-06-30"
@@ -150,8 +158,9 @@ python script/monitor_simulation.py \
 按 `Ctrl-C` 退出观察器不会停止模拟。单次检查和机器可读输出分别使用：
 
 ```bash
-python script/monitor_simulation.py --log-dir "logs_100_qwen3_30b_10td" --once
-python script/monitor_simulation.py --log-dir "logs_100_qwen3_30b_10td" --json
+cd backend
+python scripts/monitor_simulation.py --log-dir "logs_100_qwen3_30b_10td" --once
+python scripts/monitor_simulation.py --log-dir "logs_100_qwen3_30b_10td" --json
 ```
 
 ## 6. 输出结构
@@ -173,7 +182,7 @@ python script/monitor_simulation.py --log-dir "logs_100_qwen3_30b_10td" --json
 
 - 停止模拟使用 `Ctrl-C`。启动器会在运行期间创建 `run.lock`，第二个进程无法写入相同运行目录及其数据库。
 - 每个完整自然日结束后才更新 `state.json` 的 checkpoint；`last_completed_date` 之前的产物不可变。
-- 续跑必须使用同一 `RUN_ID`，并指定 `RESUME_DATE=state.json` 中的 `checkpoint.next_date`。例如：`RUN_ID=market_100_baseline RESUME_DATE=2023-06-16 bash script/run_100.sh`。
+- 续跑必须使用同一 `RUN_ID`，并指定 `RESUME_DATE=state.json` 中的 `checkpoint.next_date`。例如：`RUN_ID=market_100_baseline RESUME_DATE=2023-06-16 bash backend/scripts/run_100.sh`。
 - 续跑会一致地清理 `RESUME_DATE` 当日及之后的数据库记录和日期产物，然后重新生成该日期；其他日期会被拒绝，避免数据库与文件产物分叉。
-- 运行前可执行 `bash script/check.sh`，它会完成 Python 编译、Python 回归测试、Shell 语法、Studio 测试和 Studio 前端构建。
+- 运行前可执行 `bash backend/scripts/check.sh`，它会完成 Python 编译、Python 回归测试和 Shell 语法检查。
 - 如果日志长期不更新，先检查模型接口，再查看观察器列出的错误行和最后处理日期。

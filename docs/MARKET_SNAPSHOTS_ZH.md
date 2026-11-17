@@ -19,11 +19,11 @@ order: 36
 4. 查看快照的质量报告、文件指纹、成分与权重，点击“设为新实验默认”。也可激活旧快照来回退默认环境。
 5. 创建实验时选择市场环境快照并明确允许无新闻模式。日期须在可运行覆盖范围内，并有至少 30 个先前交易日。快照缺失或日期越界时不能创建或启动实验。
 
-同步不会覆盖 `data/stock_data.csv`、基础用户数据库或既有 Run。新默认只影响以后创建的实验，复制旧 Run 默认沿用原快照。Run 离开 draft 后不可修改配置。
+同步不会覆盖 `backend/data/stock_data.csv`、基础用户数据库或既有 Run。新默认只影响以后创建的实验，复制旧 Run 默认沿用原快照。Run 离开 draft 后不可修改配置。
 
 ## 数据语义
 
-- `data/market_assets.yaml` 固定现有 50 只成分股。科技与通信、金融服务原百分比存在万分之一舍入误差，定义记录原始权重并按比例归一到 1。快照记录定义文件指纹。
+- `backend/data/market_assets.yaml` 固定现有 50 只成分股。科技与通信、金融服务原百分比存在万分之一舍入误差，定义记录原始权重并按比例归一到 1。快照记录定义文件指纹。
 - 日线按交易日拉取全市场截面，仅持久化这 50 只股票。达到接口行数上限时分页，重复页面直接失败，避免静默截断。
 - 采用固定权重收益率链式计算，首个同步日期桥接前一日期的旧指数收盘点位；缺失成分贡献 0 收益，不重新归一。有效权重低于 80% 阻止发布，低于 95% 给出警告。
 - 成交量从“手”转换为“股”，成交额从“千元”转换为“元”。旧历史没有可信成交量单位，保留原值，不把旧成交额冒充新增成分股成交量；单位限制记录在快照中。
@@ -38,8 +38,8 @@ order: 36
 ## 本地存储与凭据
 
 - Registry：配置 Run Registry 同目录下的 `market.sqlite3`，保存任务、能力测试和快照元数据，不保存 Token。
-- 凭据优先读取 `TUSHARE_TOKEN`；否则保存到 `config/data_sources.yaml`，权限 `0600`。API 省略 `token` 保留，空字符串或 null 清除本地值；环境变量优先级不变。更新 Token 会重置旧能力测试。
-- `data/market_staging/<job_id>` 保存未发布数据；`data/market_snapshots/<snapshot_id>` 保存发布数据。
+- 凭据优先读取 `TUSHARE_TOKEN`；否则保存到 `backend/config/data_sources.yaml`，权限 `0600`。API 省略 `token` 保留，空字符串或 null 清除本地值；环境变量优先级不变。更新 Token 会重置旧能力测试。
+- `backend/data/market_staging/<job_id>` 保存未发布数据；`backend/data/market_snapshots/<snapshot_id>` 保存发布数据。
 - 发布目录包含兼容 CSV/Pickle、版本化资产定义、压缩 JSONL 原始和规范化数据、请求清单及 `snapshot.json`。发布文件设为只读，使用前检查 SHA-256。
 - 服务端固定使用 Tushare 官方 HTTPS API，禁止自定义 URL；不记录供应商原始错误文本或网络异常中的敏感请求信息。
 - 凭据、staging 和快照均已加入 Git 忽略。实际行情与新闻不随代码 PR 发布。
@@ -50,14 +50,15 @@ Run 创建时写入 `market_snapshot_id`、数据能力、转换版本、资产�
 
 准备脚本仅在 Run 私有数据库中替换 `StockData`，写入开始日前的历史，并把用户初始账户对齐到前一自然日、按可观察收盘价重算当前持仓价值。模拟当天真实收盘只用于撮合后的基准校准。开市判断使用 `cal_date` 与 `is_open`，空新闻日期安全返回空列表。
 
-新建 Run 与续跑现在通过显式 `--checkpoint` 区分，开始日期不再硬编码到 2023-06-15。旧 shell 契约续跑时自动传递该参数；直接调用 `simulation.py` 续跑时需显式添加 `--checkpoint`。
+新建 Run 与续跑现在通过显式 `--checkpoint` 区分，开始日期不再硬编码到 2023-06-15。旧 shell 契约续跑时自动传递该参数；直接用 `python -m simulation` 续跑时需显式添加 `--checkpoint`。
 
 ## CLI
 
 ```sh
-python script/sync_market_data.py --allow-missing-news
-python script/sync_market_data.py --start-date 2025-01-13 --end-date 2025-01-14 --allow-missing-news
-python script/sync_market_data.py --allow-missing-news --without-valuations --activate
+cd backend
+python scripts/sync_market_data.py --allow-missing-news
+python scripts/sync_market_data.py --start-date 2025-01-13 --end-date 2025-01-14 --allow-missing-news
+python scripts/sync_market_data.py --allow-missing-news --without-valuations --activate
 ```
 
 没有 `--activate` 时只生成快照。结束日期不得晚于 Asia/Shanghai 最近可用的收盘日；当天数据在 18:45 后才允许同步。接口实际入库不足时仍会被质量门槛阻止。
@@ -69,12 +70,11 @@ python script/sync_market_data.py --allow-missing-news --without-valuations --ac
 烟雾测试从真实模板复制 1 个用户，运行 2 个交易日，使用假模型响应，执行真实感知、订单生成、撮合、结算和结果查询。测试分别确认观察截止于 2025-01-10 和 2025-01-13，不泄漏当日或未来收盘数据。单用户没有对手方，零成交是预期结果。
 
 ```sh
-python -m unittest discover -s backend/tests -q
-python -m unittest discover -s tests -q
-npm run build --prefix studio
-npm run test:sites --prefix studio
-npm run build --prefix frontend
-npm run test --prefix frontend
+cd backend
+python -m unittest discover -s server/tests -q
+python -m unittest discover -s simulation/tests -t . -q
+npm run build --prefix ../frontend
+npm run test:sites --prefix ../frontend
 ```
 
 运行接口测试需要安装 `httpx`。外部 Tushare 账户授权和真实供应商入库仍需使用账户 Token 验收；离线测试不会消耗账户额度。
